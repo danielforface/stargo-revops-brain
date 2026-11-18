@@ -118,3 +118,19 @@ def test_multi_topic_heading_cannot_imply_both_invoice_and_airwaybill_if_only_in
     ])
     assert result['sections'][0]['heading'] == 'Invoice and Contract Reconciliation'
     assert result['sections'][0]['citations'] == ['BC-3c']
+
+
+def test_trade_compliance_not_claimed_from_trade_document_checking_alone():
+    # The approved claim is about checking trade documents for finance teams.
+    # It does not say the service guarantees trade/regulatory compliance.
+    notes = []
+    title = gemini.grounded_heading("Trade Compliance", ["BC-3d"], notes)
+    assert title == "Trade Document Checking"
+    assert len(notes) == 1
+
+
+def test_enterprise_integration_not_claimed_from_audience_listing():
+    notes = []
+    title = gemini.grounded_heading("Enterprise Integration", ["BC-2"], notes)
+    assert title == "Supported Logistics Teams"
+    assert len(notes) == 1
