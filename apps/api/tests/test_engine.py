@@ -181,3 +181,58 @@ def test_unsubscribe_is_identity_wide(tmp_path):
     assert all(lead["analysis"]["qualification"]["status"]=="suppressed" for lead in [db.lead("I-1"),db.lead("I-2")])
     assert all(lead["analysis"]["qualification"]["reply_draft"] is None for lead in [db.lead("I-1"),db.lead("I-2")])
     db.close()
+
+
+def test_future_message_cannot_retroactively_qualify(tmp_path):
+    db = synthetic_store(tmp_path)
+    original = base_event(body="Thanks for connecting. I'll get back to you.")
+    db.db.execute("UPDATE inbound SET payload=? WHERE id='I-1'", (json.dumps(original),))
+    second = base_event(id="I-2", received_at="2026-10-08T15:00:00+03:00")
+    db.put("inbound", "I-2", second, "C-1")
+    db.put("decisions", "D-1", {"id":"D-1","decision":"accepted","decided_at":"2026-10-06T10:00:00+03:00"}, "C-1")
+    db.db.commit()
+    assert db.kpi()["metrics"]["qualified_leads"]["actual"] == 0
+    db.close()
+
+
+def test_rejection_supersedes_acceptance_during_week(tmp_path):
+    db = synthetic_store(tmp_path)
+    db.put("decisions", "D-1", {"id":"D-1","decision":"accepted","decided_at":"2026-10-06T10:00:00+03:00"}, "C-1")
+    db.put("decisions", "D-2", {"id":"D-2","decision":"rejected","decided_at":"2026-10-07T10:00:00+03:00"}, "C-1")
+    db.db.commit()
+    assert db.kpi()["metrics"]["qualified_leads"]["actual"] == 0
+    db.close()
+
+
+def test_unsubscribe_overrides_existing_customer_and_owner():
+    event = base_event(body="Please unsubscribe and remove me from all outreach")
+    crm = base_contact(is_customer="true", owner="Current Owner")
+    result = assess(event, crm, fallback_extract(event, crm), [], event["received_at"])
+    assert result.status == "suppressed"
+    assert result.owner is None
+    assert result.reply_draft is None
+
+
+def test_acceptance_does_not_override_invalid_company():
+    event = base_event()
+    invalid = base_contact(vertical="software-vendor", employees="8")
+    accepted = [{"id":"SD-A", "decision":"accepted", "decided_at":"2026-10-07T09:30:00+03:00"}]
+    result = assess(event, invalid, fallback_extract(event, invalid), accepted, event["received_at"])
+    assert result.status != "QL"
+    assert result.conditions["sales_acceptance"]["met"]
+    assert not result.conditions["company_fit"]["met"]
+
+
+def test_new_self_reported_buyer_role_without_crm():
+    inbound = base_event(body=(
+        "I'm the Head of Operations at a freight forwarder in Singapore with 65 employees. "
+        "We reconcile carrier invoices manually. Can we see a demo?"
+    ))
+    extraction = fallback_extract(inbound, None)
+    assert extraction.stated_buyer_role == "Head of Operations"
+    result = assess(inbound, None, extraction, [], inbound["received_at"])
+    assert all(result.conditions[k]["met"] for k in (
+        "company_fit", "relevant_buyer", "specific_data_problem", "expressed_interest"
+    ))
+    assert result.conditions["company_fit"]["unverified"]
+    assert result.status == "QL candidate"

@@ -182,7 +182,7 @@ def fallback_extract(inbound: dict, crm: dict | None) -> Extraction:
         intent = "demo"
     language = "he" if re.search("[\u0590-\u05ff]", message) else "nl" if "geen interesse" in low else "en"
     company_facts: list[str] = []
-    employees = re.search(r"\b(\d{1,6})\s*[- ]?(?:person|employee|staff|people)\b", message, re.I)
+    employees = re.search(r"\b(\d{1,6})\s*[- ]?(?:people|persons?|employees?|staff)\b", message, re.I)
     if employees:
         company_facts.append("employees=" + employees.group(1) + " (self-reported)")
     vertical = re.search(r"customs brokerage|freight forwarder|3pl|trucking|trade.finance|carrier", message, re.I)
@@ -195,7 +195,19 @@ def fallback_extract(inbound: dict, crm: dict | None) -> Extraction:
     evidence = [part[:260] for part in sentence_parts if PROBLEM_RE.search(part) or INTEREST_RE.search(part)][:5]
     if not evidence and message:
         evidence = [message[:220]]
-    role = crm.get("job_title") if crm else ("Owner" if re.search(r"\bI own\b", message, re.I) else None)
+    # Unseen messages may state a buyer role; do not treat it as verified CRM data.
+    role = (crm or {}).get("job_title")
+    if not role:
+        role_match = re.search(
+            r"\b(?:head of (?:pricing|operations|procurement|finance|digital)|"
+            r"(?:pricing|operations|procurement|commercial|finance|digital) (?:manager|director)|"
+            r"(?:chief (?:operating|financial) officer)|COO|CFO|"
+            r"(?:owner|founder) of (?:the |our )?(?:company|business)|I own (?:the |our )?(?:company|business))\b",
+            message, re.I)
+        if role_match:
+            role = role_match.group(0)
+        elif re.search(r"(?:מנהלת?|ראש) (?:מחלקת )?(?:תפעול|רכש|כספים|תמחור)", message):
+            role = "Operations Manager (self-reported, Hebrew)"
     return Extraction(language=language, intent=intent, stated_buyer_role=role,
         stated_data_problem=(PROBLEM_RE.search(message).group(0) if PROBLEM_RE.search(message) else None),
         stated_company_facts=company_facts, evidence_quotes=evidence,
@@ -259,13 +271,14 @@ def assess(inbound: dict, crm: dict | None, extraction: Extraction, decisions: l
     score = sum(f.score for f in factors.values())
     current_decision = sorted(decisions, key=lambda d: (stamp(d["decided_at"]), d["id"]))[-1] if decisions else None
     owner = ROUTE.get(region, "Triage queue")
-    if c.get("is_customer") in ("true", "True", True) or (c.get("open_deal_id") and c.get("open_deal_created") and first_inbound and stamp(c["open_deal_created"] + "T00:00:00+03:00") < stamp(first_inbound) and (not decisions or stamp(c["open_deal_created"] + "T00:00:00+03:00") < min(stamp(d["decided_at"]) for d in decisions))):
-        owner = c.get("owner") or owner
-        status = "excluded"
+    # Suppression outranks ordinary account ownership, even for existing customers.
+    if extraction.intent == "unsubscribe":
+        status, owner = "suppressed", None
     elif extraction.injection_detected:
         status = "needs review"
-    elif extraction.intent == "unsubscribe":
-        status, owner = "suppressed", None
+    elif c.get("is_customer") in ("true", "True", True) or (c.get("open_deal_id") and c.get("open_deal_created") and first_inbound and stamp(c["open_deal_created"] + "T00:00:00+03:00") < stamp(first_inbound) and (not decisions or stamp(c["open_deal_created"] + "T00:00:00+03:00") < min(stamp(d["decided_at"]) for d in decisions))):
+        owner = c.get("owner") or owner
+        status = "excluded"
     elif extraction.intent == "investor":
         status, owner = "excluded", "Founders"
     elif extraction.intent in {"job seeker", "partnership", "auto-reply"} or vertical in {"investor", "software-vendor"}:
@@ -469,7 +482,6 @@ class Store:
         for cid, ds in by_dec.items():
             if cid not in first_inbound:
                 continue
-            earliest = min(ds, key=lambda d: stamp(d["decided_at"]))
             acceptances = sorted((d for d in ds if d["decision"] == "accepted"), key=lambda d: stamp(d["decided_at"]))
             if not acceptances:
                 continue
@@ -482,11 +494,16 @@ class Store:
                 continue
             contact = contacts.get(cid, {})
             initial = first_inbound[cid]
-            lead = self.lead(initial["id"])
-            conds = lead["analysis"]["qualification"].get("conditions", {})
-            gate_4 = all(conds.get(key, {}).get("met", False) for key in ("company_fit", "relevant_buyer", "specific_data_problem", "expressed_interest"))
-            # The first message can be less informative than a later message; evaluate all messages for this identity.
-            gate_4 = gate_4 or any(all(self.lead(m["id"])["analysis"]["qualification"].get("conditions", {}).get(k, {}).get("met", False) for k in ("company_fit", "relevant_buyer", "specific_data_problem", "expressed_interest")) for m in by_contact[cid])
+            # Only evidence received on/before acceptance may qualify that decision.
+            # Future messages cannot retroactively validate an earlier QL.
+            gate_4 = any(
+                all(
+                    self.lead(m["id"])["analysis"]["qualification"].get("conditions", {}).get(k, {}).get("met", False)
+                    for k in ("company_fit", "relevant_buyer", "specific_data_problem", "expressed_interest")
+                )
+                for m in by_contact[cid]
+                if stamp(m["received_at"]) <= stamp(first["decided_at"])
+            )
             if not gate_4:
                 continue
             excluded, why = exclusion_reason(contact, first_inbound[cid]["received_at"], first["decided_at"])

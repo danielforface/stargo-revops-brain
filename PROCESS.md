@@ -22,3 +22,10 @@ During the first local Pytest run, the assistant reported **14 passed, 1 failed*
 ## Pending candidate review
 
 Before submission I will review the claims in this document, reproduce the startup instructions on my own machine, inspect representative QL and KPI calculations, check a failed-provider scenario and demonstrate a small code change without AI. These are **planned reviewer activities**, not claims that I have already performed them.
+
+
+## Engineering verification update (18 Nov 2026)
+
+The development assistant verified the original source-pack counts and the key API endpoints, added regression coverage for temporal qualification, unsubscribe precedence, replayed sales rejection, and self-reported new-buyer detection, and corrected an employees-plural parsing defect found by a failed regression test. The local offline suite reached **25 passed** after these changes. This is tool-reported verification by the assistant, **not** a claim that Daniel personally ran it.
+
+The local environment did not have React/TypeScript npm dependencies installed; frontend compilation was **not verified locally**. The prior GitHub Actions run #5 on the old commit was successful. The new commit must be certified by a subsequent run before declaring the PR ready for review.
