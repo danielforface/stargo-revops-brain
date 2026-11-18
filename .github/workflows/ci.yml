@@ -1,4 +1,6 @@
 name: Quality gates
+permissions:
+  contents: read
 on:
   pull_request:
   push:
@@ -29,11 +31,7 @@ jobs:
           node-version: '22'
       - name: Dependencies
         working-directory: apps/web
-        run: npm install --no-audit --no-fund
-      - name: Capture reproducible npm lock (temporary reviewer packaging step)
-        working-directory: apps/web
-        run: |
-          node -e "const fs=require('fs'); const data=JSON.stringify(JSON.parse(fs.readFileSync('package-lock.json','utf8'))); for(let i=0;i<data.length;i+=2500)console.log('STARGO_LOCK_CHUNK_'+String(i/2500).padStart(4,'0')+':'+data.slice(i,i+2500));"
+        run: npm ci --no-audit --no-fund
       - name: Frontend client contract tests (offline)
         working-directory: apps/web
         run: npm run test

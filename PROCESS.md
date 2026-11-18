@@ -1,50 +1,44 @@
-# AI-assisted engineering process — factual draft for candidate review
+# PROCESS — How I used AI-assisted engineering
 
-> **Draft pending Daniel's first-person review and approval before submission.** This record identifies known events; it does not attribute unverified manual coding or tests to the candidate.
+> **Author review required before submission.** I prepared this narrative with AI assistance; before emailing it I need to read and own every first-person statement, make any necessary corrections, and report my **actual total hours** in my reply. I have not represented generated code as code I typed myself.
 
-I received Stargo's synthetic take-home pack and created the public GitHub repository `danielforface/stargo-revops-brain`. I provided a detailed execution directive on 18 November 2026 requiring an auditable, human-in-the-loop system, deterministic business rules, full data provenance, source-pack privacy, meaningful tests and transparent AI usage.
+## Goal, constraints and plan
 
-## Tool use and task delegation
+I received a Stargo RevOps Engineer take-home focused on a qualified inbound queue, two chained agents, trustworthy weekly KPIs, and a GEO/LLM-SEO snapshot. I prioritized **correctness, auditable evidence, offline reproducibility and privacy** over additional integrations. I set up the public GitHub repository and supplied the original v2 task ZIP to ChatGPT (GPT-6) as my engineering assistant, with a detailed directive emphasizing production-minded design, predictable task ownership, testing and source confidentiality.
 
-I used ChatGPT (GPT-6) as a coding and architectural assistant. I supplied the original take-home ZIP and asked it to read the assignment, inspect the repository, build the Python/FastAPI, SQLite and React/TypeScript project, write tests, and document engineering decisions. The assistant was instructed not to submit to the employer, send messages, publish source-pack files or claim tests it had not run. This is documented use of AI rather than a claim that every generated line was manually written.
+The core architecture I requested was intentionally small: Python/FastAPI for HTTP, Pydantic contracts, SQLite for durable state, React/TypeScript for the operator UI, and a fixed-host optional LLM adapter. The model may interpret inbound text but it does **not** own the five QL gates, exclusions, KPI arithmetic, Sales acceptance, routing, or outbound communication. I asked for a rules-only path that needs **no API key**. I also asked to keep the original source data out of the public Git history and to build tests with independent synthetic examples.
 
-## What I directed
+## What I delegated to the assistant, and what I controlled
 
-- Business rules and KPI accounting remain deterministic and evidence-backed; LLM output is parsed only into a validated extraction schema.
-- Human acceptance is required for a QL and for any outbound reply, which the application never sends.
-- Pre-existing customers, open deals, duplicates and late UTC events must not inflate acquisition metrics.
-- The repo must support contributors, tests, CI and a code walkthrough without AI.
+I used ChatGPT to inspect the assignment and source pack, implement most of the Python/React code, draft architecture and reviewer documentation, create automated tests and run GitHub Actions checks. I reviewed the user-facing behavior and gave corrections based on real local results rather than accepting generated code on the strength of a description.
 
-## Verification and corrected failure
+Representative steering instructions I gave included: making the repository understandable to other developers, designing a complete professional submission rather than isolated scripts, using a Gemini API key entered through the frontend instead of requiring a paid or hardcoded key, and keeping the user interface restrained and responsive. I insisted that the assistant complete the substantial engineering work before asking me for local verification steps.
 
-During the first local Pytest run, the assistant reported **14 passed, 1 failed**. The failing test revealed that a model failure was serialized as a JSON `null` string, which later broke `lead()` when it attempted to parse it as a valid Extraction object. The assistant corrected the storage and read path. A subsequent local run reported **15 passed**. This is a genuine example of verification catching an error in AI-assisted code.
+I did **not** manually author every file, and I do not claim that I did. The AI-assisted code, tests and documents are visible in the Git history. My own contribution includes task framing, constraints, architecture priorities, real-world validation, defect reports and the review/decision to use the resulting design. The code walkthrough must be done by me without an AI assistant.
 
-## Pending candidate review
+## Where verification changed the design
 
-Before submission I will review the claims in this document, reproduce the startup instructions on my own machine, inspect representative QL and KPI calculations, check a failed-provider scenario and demonstrate a small code change without AI. These are **planned reviewer activities**, not claims that I have already performed them.
+1. **Server boot on Windows.** My first local start failed because `ZoneInfo('Asia/Jerusalem')` did not find IANA timezone data. I shared the Python traceback. The assistant added a Windows-specific `tzdata` dependency and a Windows/Python 3.14 CI job. I re-ran the server and received a healthy seed response.
+2. **Concurrent dashboard HTTP 500.** The React frontend surfaced `Unexpected token 'I'`, while the browser showed `/api/kpi/week` returning 500. This exposed a shared SQLite connection used across FastAPI request threads. The assistant added serialized database operations, regression tests, and non-JSON API error handling; the API recovered.
+3. **Gemini key compatibility.** I requested live Gemini through a browser-entered key and tested actual Google AI Studio keys. The initial local key validator rejected modern `AQ.` credentials before any network call. The assistant updated credential validation and the supported model list, and I later observed successful `/api/ai/verify` and live GEO generation.
+4. **Historical QL integrity.** A lead with an original Sales acceptance was displayed as `needs review` after newer extraction. An LLM response was effectively changing the visible evidence behind a historical KPI. The assistant added immutable acceptance-time evidence snapshots, an additive SQLite migration, replay tests and a current-status-versus-historical-KPI distinction.
+5. **Gemini omission of source facts.** In the local Yossi Mizrahi detail, the model understood buyer role and manual document work but omitted an explicitly stated team size, vertical and city, incorrectly weakening current qualification. I supplied the full UI evidence. The assistant added a deterministic corroboration pass *inside Agent A* for explicitly stated, self-reported firmographics; I then observed all five QL conditions, score 100, correct owner and unchanged historical KPI.
+6. **GEO evidence quality.** A live Gemini brief linked an unrelated air-waybill pilot to an invoice-reconciliation paragraph and later used an overly broad compliance heading. The assistant implemented topic-matched source IDs, visible safety notes and conservative canonical headline replacement rather than silently publishing unsupported claims.
 
-## Engineering verification update (18 Nov 2026)
+I deliberately treated these defects as evidence to investigate, not as reasons to hide tests or inflate metrics. Generated patches were followed by source review, regressions and repeat CI runs.
 
-The development assistant subsequently verified the original source-pack counts and the key API endpoints, added regression coverage for temporal qualification, unsubscribe precedence, a replayed sales rejection, and self-reported new-buyer detection, and corrected an `employees` plural parsing error found by a failed regression test. The local offline suite reached **25 passed** after these changes. This is tool-reported verification by the assistant, **not** a claim that Daniel personally ran it.
+## Automated vs personal verification
 
-The local environment did not have React/TypeScript npm dependencies installed; frontend compilation in that environment is **not verified**. A GitHub Actions frontend job is configured but its actual status must be confirmed before declaring the project ready for submission.
+The repository's test suite uses **mocked LLM transport** so CI does not consume keys or assume Internet access to Google. It covers identity normalization, schema validation, prompt injection, suppression, time-zone boundaries, unique-count KPIs, historical decisions, SQLite replay/migration, concurrent API behavior, GEO claim grounding, and React interactions. The CI run and its exact commit are linked in `QUALITY_REPORT.md`.
 
-## 18 Nov 2026 — Live Gemini and operator experience upgrade
+On my local Windows machine I imported the original pack, ran the backend and frontend, inspected the three screens and lead detail, used the Gemini connection workflow, and ran `python scripts/reviewer_smoke.py`. Its output confirmed 19/20/11/12/1 source counts and 6/4/3/2 weekly KPIs. I observed successful live Gemini verification, a live GEO content brief and the subsequent five-gate QL analysis after the source-firmographic correction. A live model acceptance test is **separate** from the mocked CI tests.
 
-The AI development assistant designed and implemented an optional operator-entered Gemini API-key workflow, a fixed-host HTTP backend adapter, schema/evidence checks, source-grounded GEO generation, an upgraded React UI and offline provider tests. The request to prioritize Gemini and a stronger corporate-grade experience came from the candidate. The implementation preserves deterministic QL decisions and never sends outbound customer messages.
+## Technical trade-offs and what I cut
 
-The assistant consulted Google AI's current API/key documentation and tested Python contracts with mocked provider responses. Actual external model quality, billing-tier availability and end-to-end acceptance of a real key **cannot be claimed verified** until the candidate connects their own key and completes the live walkthrough. This paragraph documents assistant work, **not** code manually authored by the candidate. The first-person narrative above must be reviewed and approved by the candidate before external submission.
+I favored a readable modular monolith over microservices and a message queue. SQLite is suitable for the local single-operator workflow, but not a scalable, authenticated multi-tenant service. No actual HubSpot/CRM synchronization, live emails, social messaging, externally hosted deployment, automated human approval or generic paid-model requirement was built. The optional HubSpot dry-run was cut because the assignment favors robust core semantics. A small synthetic qualifier eval was added as a narrower optional exercise.
 
+The recorded answer set supports offline snapshot analysis. I did **not** claim to have queried all three external answer engines live. Live Gemini generates GEO *editorial structure*; the factual body uses approved BC/PP statements so source provenance remains auditable. An API key in browser tab memory through a localhost proxy is a review/demo convenience; I would replace it with authenticated server-side secret management for production.
 
-## Additional assistant-led engineering cycle — evidence for candidate review
+## Human ownership before delivery
 
-The candidate directed the assistant to finish the identified P0/P1 backlog rather than asking for more design drafts. The assistant inspected the v2 assignment and QL standard, reproduced a missing Yossi QL (5 rather than the pristine pack's 6) and implemented a decision-time evidence ledger to prevent later LLM output changes from rewriting accepted weekly QLs. It also added an additive migration of existing SQLite state, a dynamic KPI Pack/CRO note, optional historical received-at entry in React, clearer identity/event counters, Gemini-aware source matching for GEO, and offline tests for these flows. The source pack was kept out of the public repository. The assistant performed a local clean-seed and legacy database migration smoke test and ran offline Pytest before preparing the PR change.
-
-**Candidate review is still required:** verify this narrative matches what actually happened, record the total *actual time spent* and the coding/AI tools used, and be prepared to personally explain the implementation. Do not claim manual coding, manual tests, live Gemini traffic, production deployment or post-submission work that did not happen. The candidate's live UI test and GitHub Actions status for the final commit should be appended after they are independently verified.
-
-
-## AI-assisted correction after real operator review — 18 November 2026 (candidate review required)
-
-During a local walkthrough, the user showed a self-reported business owner whose live Gemini analysis correctly extracted buyer role and a document problem, but omitted employee count, business vertical and location even though those statements appeared in the source message. Historical accepted-evidence KPI remained stable, but the current queue showed `needs review`. This was a real false negative, not a reason to rewrite Sales Acceptance.
-
-The development assistant implemented a bounded corroboration pass inside Agent A, verified evidence-specific Agent B gates, added synthetic hallucination/omission/unsolicited-interest/multilingual regressions, and updated the UI to distinguish self-reported firmographics from CRM facts. The assistant ran local offline tests and clean-pack replay and obtained separate GitHub Actions evidence. This report does not claim that the candidate manually wrote the code or that a new personal-key request was made from CI. The candidate must review this paragraph in their own voice and record true hours before submission.
+I will personally check that this account accurately represents my involvement and revise any wording that overstates manual work. I will include the honest total time in the submission email, and I will not push additional changes after submission without notifying Stargo. For the live interview I plan to explain a new geographic routing case and trace one QL and one KPI result directly in code **without using AI assistance**.

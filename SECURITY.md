@@ -1,18 +1,24 @@
-# Security policy
+# Security boundaries
 
-This is an offline-capable, local single-operator take-home prototype — **not a hardened, internet-facing service**.
+**This is a local single-operator take-home application, not an internet-facing or multi-tenant service.** Bind the backend to `127.0.0.1`; never put an unauthenticated demo API on a public address.
 
-Do **not** include vulnerabilities, exploit payloads, credentials or employer-provided messages in public issues. Instead use GitHub's **Report a vulnerability** private advisory flow for this repository if available, or contact the repository owner privately. No public-response SLA is promised.
+## Data and credentials
 
-Threat boundaries: inbound messages and model results are untrusted; business rules are deterministic; private logs should not include message bodies, email addresses, full prompts, credentials or API keys. Only optional outbound traffic from the backend is to the configured, fixed Groq endpoint when explicitly enabled; no CRM, email or social services are contacted. The UI does not send drafts.
+- The six employer-supplied synthetic source files are imported into Git-ignored `data/private/`. Runtime SQLite databases, `.env` files, package caches and secrets are not committed.
+- No CRM, email, LinkedIn or marketing destination is contacted. The app generates a **reply draft only**; every actual Sales decision is manual and recorded.
+- If enabled, **Gemini Live** sends the selected inbound content to Google's **fixed** `generativelanguage.googleapis.com` HTTPS endpoint through the local backend. A user-supplied key stays in React tab memory; it is never placed in request URLs, browser storage, logs, source code or SQLite. Headers can be visible in that user's own browser network inspector; avoid shared computers and untrusted extensions. Do not process real third-party personal data with Google without authorization.
+- The pre-existing optional Groq mode, when configured by OS environment variables, also uses a fixed HTTPS endpoint. The default `rules-only` mode requires **no provider key or network calls to an LLM**.
+- Logs should contain request methods/statuses and safe error classes, **not** full message bodies, emails, prompts, API keys, or supplier documents. Do not post customer material in public issues or PR comments.
 
-The backend is intended for `127.0.0.1`. Do not deploy publicly without authentication, HTTPS, rate limiting, abuse protection, secure secrets management and a data retention plan. Review security implications of dependency changes. Source-pack data is kept in ignored `data/private/`.
+## Model and input trust boundaries
 
-### Local Gemini key safety
+- Inbound messages and model outputs are untrusted. Pydantic validates structure. Verbatim source evidence, deterministic firmographic corroboration and injection checks constrain Agent A.
+- Agent B applies QL gates, scoring, routing, suppression and exclusion **deterministically**. An LLM cannot accept a lead, modify weights or send any reply.
+- A failed model response moves the *current* analysis to `needs review`; it never silently creates or deletes a historical Sales acceptance. `decision_evidence` stores immutable acceptance-time snapshots.
+- GEO prose is assembled from approved `BC`/`PP` text. Unrelated source associations and unsupported editorials are filtered or rejected; source-grounded does not mean publication without human approval.
 
-The live connector accepts a key only in a same-origin request header supplied by the operator. The UI holds it only in tab memory and clears it on disconnect, reload, or close; no `localStorage`/cookies/SQLite or Git commit. Do not run the unauthenticated demo on a public interface. Real production use needs server-side encrypted secret management, authentication, per-user authorization, and TLS. Do not put secrets into screenshots, issue reports, browser console logs, or PR descriptions. Live inference sends the entered lead's text to Google: use authorized/synthetic data only.
+## Out-of-scope protections for production
 
+The app has no authentication or authorization, secure server-side key vault, public deployment hardening, durable queue, rate limiting or GDPR retention policy. Before any real production use, add these alongside managed migrations, access isolation, HTTPS, audit/privacy monitoring and threat review. CORS alone does not authenticate requests.
 
-### Decision integrity, operator privacy, and failure logging
-
-A failed or malicious model call cannot turn a lead into QL/disqualified. The latest analysis may move to `needs review`, but original sales acceptance is preserved in an immutable `decision_evidence` snapshot so historical KPI does not silently shift. A human rejection is a separate append-only event. The `analysis_history` table stores structured, validated output and a safe error class (not raw provider errors, user prompts, messages or credentials). Keys are never persisted. CORS is restricted to localhost Vite origins, and the development API is not authenticated: do not bind it beyond loopback. Data sent to Gemini may be processed by Google; do not send real third-party personal data without authorization. No outbound communication from AI drafts is implemented.
+Report security concerns privately to the repository owner; do not include vulnerabilities, live keys or personal data in a public GitHub issue. No incident-response SLA is implied by this take-home project.

@@ -1,151 +1,165 @@
 # Stargo RevOps Brain
 
-*A compact, auditable GTM workbench for lead qualification, human sales decisions, weekly KPIs and AI visibility.*
+**RevOps Engineer take-home · Stargo · November 2026**  
+An auditable, local-first GTM workbench: inbound signals → evidence extraction → deterministic qualification and routing → human Sales decisions → weekly KPI pack, with a source-grounded AI-visibility (GEO) workflow.
 
-**Status:** Engineering candidate solution. The employer-provided data pack is **not** committed to this public repository; only original application code and independent test fixtures are included. All names and figures in the take-home pack are synthetic, but publication rights were not explicitly established. Provide the original pack locally to reproduce the assignment's KPI report.
+**Start here:** [Windows setup](#windows--powershell-quick-start) · [macOS / Linux setup](#macos--linux-quick-start) · [How to review](docs/REVIEWER_GUIDE.md) · [KPI pack](KPI_PACK.md) · [AI-assisted process](PROCESS.md) · [Architecture](ARCHITECTURE.md).
 
-## Architecture in one minute
-
-A **modular monolith**: one Python/FastAPI API, SQLite persistence, one React/TypeScript UI. Data enters through either the seed importer or `/api/inbound`, and is normalized by the same Pydantic contract. Agent A extracts evidence from untrusted text, Agent B applies deterministic QL, scoring, exclusion and routing logic; humans explicitly Accept/Reject. Reports derive from stored facts and decisions, not browser calculations. GEO analysis reads the 24 recorded AI answers; brief text uses only approved BC/PP claims. No user message is automatically sent.
+> **Data availability:** The six original synthetic files from `Stargo_RevOps_Take_Home_Pack_v2.zip` are imported **locally**, rather than committed to this public repository. Reviewers already have the assignment ZIP; place it on the machine where the app will run. The application is functional without an LLM key, but the provided pack is necessary to reproduce the assignment's original KPI figures. CI uses independent synthetic fixtures; it does not need the employer pack.
 
 ## Requirements
 
-- Python 3.11 or newer, `pip`, `venv`
-- Node.js 20+ and npm
-- Original `Stargo_RevOps_Take_Home_Pack_v2.zip` provided by Stargo
+- Python **3.11+** (`py` on Windows), Git, and Node.js **20+** with npm.
+- The original Stargo take-home ZIP, supplied with the assignment. **Do not unpack it into Git-tracked files.**
+- Two terminals; localhost ports **8000** (FastAPI) and **5173** (Vite).
+- **No API key** for the initial end-to-end run.
 
-## Quick start (no LLM key)
+## Windows / PowerShell quick start
 
-```bash
-# From the repo root. Import the employer-provided ZIP privately (never committed):
-python scripts/import_take_home.py /path/to/Stargo_RevOps_Take_Home_Pack_v2.zip
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
-pip install -r apps/api/requirements.txt
-STARGO_DATA_DIR=./data/private STARGO_DB_PATH=./runtime/revops.sqlite3 uvicorn api:app --app-dir apps/api --reload
+Commands below assume a **fresh clone** and a copy of `Stargo_RevOps_Take_Home_Pack_v2.zip` in Downloads. Use your actual ZIP location if different.
+
+**Terminal 1 — backend, from a directory of your choice:**
+
+```powershell
+git clone https://github.com/danielforface/stargo-revops-brain.git
+cd stargo-revops-brain
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r apps/api/requirements.txt
+python scripts/import_take_home.py "$env:USERPROFILE\Downloads\Stargo_RevOps_Take_Home_Pack_v2.zip"
+$env:STARGO_DATA_DIR = (Resolve-Path ".\data\private").Path
+$env:STARGO_DB_PATH = "runtime/revops.sqlite3"
+$env:STARGO_LLM_PROVIDER = "rules-only"
+python -m uvicorn api:app --app-dir apps/api --host 127.0.0.1 --port 8000
 ```
 
-In a **second terminal**:
+If PowerShell blocks activation, run `Set-ExecutionPolicy -Scope Process Bypass` **in that terminal only**, then retry `Activate.ps1`. Windows timezone support (`tzdata`) is installed with `requirements.txt`.
 
-```bash
-cd apps/web
-npm install
+**Terminal 2 — frontend:**
+
+```powershell
+cd stargo-revops-brain\apps\web
+npm ci
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`. The backend serves `http://127.0.0.1:8000/api/health` and OpenAPI documentation at `http://127.0.0.1:8000/docs`.
+If Terminal 2 starts from another working directory, navigate to the actual cloned repository first. Open **http://127.0.0.1:5173/**. If port 5173 is busy, stop the other Vite process rather than accepting an auto-selected port.
 
-Windows PowerShell, from the repository root:
+## macOS / Linux quick start
+
+```bash
+git clone https://github.com/danielforface/stargo-revops-brain.git
+cd stargo-revops-brain
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r apps/api/requirements.txt
+python scripts/import_take_home.py /absolute/path/to/Stargo_RevOps_Take_Home_Pack_v2.zip
+export STARGO_DATA_DIR="$PWD/data/private"
+export STARGO_DB_PATH="$PWD/runtime/revops.sqlite3"
+export STARGO_LLM_PROVIDER="rules-only"
+python -m uvicorn api:app --app-dir apps/api --host 127.0.0.1 --port 8000
+```
+
+In a **second** terminal:
+
+```bash
+cd stargo-revops-brain/apps/web  # use the actual absolute path if necessary
+npm ci
+npm run dev
+```
+
+Open **http://127.0.0.1:5173/**. The frontend proxies `/api` to the backend on `127.0.0.1:8000`.
+
+## First-run verification (no key)
+
+1. Open **http://127.0.0.1:8000/api/health**. Expect `ok: true`, `seed.ready: true`, and seed counts: **19 contacts, 20 valid inbound, 11 Sales decisions, 12 pipeline events, 1 quarantined invalid record**.
+2. Open the React app. **Lead intelligence** shows the queue, per-lead Agent A evidence, Agent B's five gates, score, owner, reply draft and manual Accept/Reject.
+3. **Weekly performance** for **4–8 October 2026, Asia/Jerusalem** must report **6 Qualified Leads / 4 Meetings Booked / 3 Meetings Held / 2 Opportunities** against targets **25 / 15 / 12 / 5**. Drill into KPI records. `historical-reactivation` is **Unknown (feed not received)**, not zero. Expansion is shown separately.
+4. **AI visibility** reads **24 recorded answers, 8 prompts, 3 engines**; rank gaps and generate a clearly labelled *offline, approved-context* brief without an LLM.
+5. To check the **unaltered reference dataset without changing your working SQLite database**, run the isolated smoke command below.
+
+**Isolated source-pack replay** (from repository root with the virtual environment activated):
 
 ```powershell
-py scripts/import_take_home.py "C:\path\to\Stargo_RevOps_Take_Home_Pack_v2.zip"
-py -m venv .venv
-.\\.venv\\Scripts\\Activate.ps1
-pip install -r apps/api/requirements.txt
-$env:STARGO_DATA_DIR = (Resolve-Path data/private).Path
-$env:STARGO_DB_PATH = 'runtime/revops.sqlite3'
-uvicorn api:app --app-dir apps/api --reload
+python scripts/reviewer_smoke.py
 ```
 
-Once seeded, the SQLite database can be restarted safely; the importer uses stable source IDs and does **not** overwrite human decisions. The original malformed `IN-019` record is quarantined with an error class; it does not crash setup. The 19 CRM records, 20 valid inbound records, 11 sales decisions and 12 pipeline events are stored at clean import.
+It creates and deletes a temporary SQLite file, verifies **6/4/3/2**, exercises historical Accept/Reject and a simulated model failure, then exits without contacting an LLM or modifying `runtime/revops.sqlite3`. The checked-in [KPI_PACK.md](KPI_PACK.md) is the **pristine seed export**; interactive test decisions in your own SQLite file may legitimately change the dashboard and a subsequently re-exported pack.
 
-## Optional live LLM mode
+## Optional Gemini Live — no key is required to review the core
 
-Fallback is **rules-only**, labelled in the API/UI as `rules-only`. It does not simulate a live model. For a free-tier Groq key:
+1. In the UI choose **Connect Gemini**, select `gemini-3.5-flash-lite` (the default) or another offered model, paste a **complete** Gemini API key from Google AI Studio, and select **Test connection & activate**.
+2. Only after Google responds successfully does the app show **Gemini Live**. Use **New inbound** or **Re-analyze with Gemini** to ask the model for *Agent A* signals. **Agent B remains deterministic.** No seeded messages are sent to Google automatically on page load.
+3. In **AI visibility**, **Generate with Gemini** produces an LLM-guided structure. Factual content is reconstructed from approved `BC` / `PP` claims and source-topic checks; unsupported or unrelated citations are blocked/flagged.
+4. **Disconnect** or reload the tab to return to **rules-only** mode. Invalid keys, timeouts, unsafe/invalid model output, and quota errors never turn a failed analysis into QL. No message is sent to a customer.
 
-```bash
-export STARGO_LLM_PROVIDER=groq
-export GROQ_API_KEY='your-key-here'
-# restart the API
-```
+The key is held **in the browser tab's memory only** and passed in a request header to the localhost FastAPI proxy, which contacts Google's **fixed HTTPS endpoint**. It is not saved in SQLite, Git, environment files or browser localStorage. This is a *local, single-operator demonstration*, not production credential management. Use only authorized/synthetic messages when sending content to Google. Gemini Free Tier and model availability depend on the Google AI Studio project.
 
-Only Agent A makes LLM requests, via a fixed HTTPS endpoint at `api.groq.com`; output must pass the Pydantic extraction schema and evidence verification. Agent B *never* delegates QL authority to a model. On invalid JSON, timeout, invalid credentials or a disconnected provider, the stored status becomes `needs review`, preserving human control. Automatic retry is intentionally disabled to avoid duplicate charges or runaway wait times. The model is never used during CI. The application makes no CRM, email or social-network calls. Reply drafts are **never sent**.
+## Run the automated checks
 
-## What you can do
+**Backend, in the activated virtual environment from repository root:**
 
-- Import CRM, inbound messages, sales decisions, opportunities and meeting events idempotently.
-- Paste an arbitrary new inbound, including Hebrew and LinkedIn messages, and run the same analysis pipeline.
-- Match identities by normalized email or LinkedIn profile; never merge by company or name.
-- Inspect evidence, five QL gates, score factors, owner and draft response.
-- Accept/Reject with editable decision timestamp and persistent audit events.
-- View weekly acquisition KPI actuals, targets, variance, per-record drill-down, source attribution and separate expansion.
-- Inspect 24 synthetic AI-answer captures, competitor mentions and ranked GEO gaps. Generate an *offline approved-context template brief* with BC/PP citations; this is not advertised as live LLM generation.
-
-## Tests and artifacts
-
-```bash
-pip install -r apps/api/requirements-dev.txt
-pytest -q apps/api/tests
+```powershell
+python -m pip install -r apps/api/requirements-dev.txt
+python -m pytest -q apps/api/tests
 python -m compileall -q apps/api
-ruff check apps/api --select E4,E7,E9,F63,F7,F82
-cd apps/web && npm install && npm run build
+python -m ruff check apps/api --select E4,E7,E9,F63,F7,F82
 ```
 
-Generate the data-backed report **after** seeding the database:
+**Frontend, from `apps/web`:**
 
-```bash
-python apps/api/export_kpi.py
+```powershell
+npm ci
+npm run test
+npm run build
 ```
 
-The checked-in `KPI_PACK.md` is generated from the original seed. It is not hand-entered. It should be regenerated after decision changes. For a clean-state replay, remove only the local `runtime/` directory; **this discards operator decisions** and must not be done in normal operations.
+The same gates run in [GitHub Actions](.github/workflows/ci.yml) with Windows/Python 3.14, Linux/Python 3.12, Node.js 22 and React/TypeScript. External LLM requests are mocked in CI; a successful local Gemini verification is a separate operator acceptance step. See [reviewer guide](docs/REVIEWER_GUIDE.md) for reproducible edge-case walkthroughs.
 
-## Design choices and trade-offs
+## Architecture and decisions
 
-- **No microservices or message broker**: unnecessary in a self-contained assignment, easier to audit.
-- **SQLite**: transparent relational state, stable IDs, transactional writes and additive migration tables; no concurrent-writer horizontal scaling is promised.
-- **Rules-only fallback**: testable offline and resilient, but weaker than a multilingual model for unseen phrasing. All claims about model quality are bounded by this limitation.
-- **Deliberate cuts**: no live HubSpot integration, outbound delivery, auth, heavy telemetry, Kubernetes, animation platform, paid LLM dependency, or unsupported claims about lead-company data.
-- **Access model**: local single-operator demo. No authentication is required by the brief; **do not expose this API to the internet**. CORS is limited to local Vite origins.
-- **GEO**: uses source-grounded template instead of speculative live copy if no model is configured. All BC/PP claims are explicit; any novel claims require separate approval.
+```text
+Original ZIP -> private data import -> Pydantic inbound validation -> SQLite
+New inbound -------------------------/                    |
+                                                         v
+                         Agent A: validated extraction (offline | Gemini)
+                                                         |
+                              exact quotes + grounded self-reported facts
+                                                         v
+                         Agent B: deterministic QL gates, score, route
+                                                         |
+                      human Sales decision / timestamp -> evidence snapshot
+                                                         |
+                           traceable weekly KPI + CRO note + drill-down
 
-See [ARCHITECTURE.md](ARCHITECTURE.md), [PROCESS.md](PROCESS.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [docs/engineering-walkthrough.md](docs/engineering-walkthrough.md).
+Recorded AI answers -> deterministic GEO gap ranking -> approved-source brief
+```
 
-## Gemini Live — session-only key in the operator UI
+- **Backend:** FastAPI (`apps/api/api.py`), domain rules and SQLite store (`apps/api/engine.py`), Gemini proxy (`apps/api/gemini.py`), GEO (`apps/api/geo.py`). React/TypeScript/Vite frontend in `apps/web/src/`. This *modular monolith* is simpler to reproduce and audit than a message-broker stack for a take-home.
+- **Agent A:** produces validated language, intent, buyer role, problem, self-reported firmographics, verbatim evidence, and injection flag. With Gemini, unsupported firmographics are rejected and explicitly observable source facts are corroborated by a deterministic extraction pass **within Agent A**.
+- **Agent B:** deterministic and independent of model instructions. Qualification requires (1) ICP company fit, (2) buyer authority, (3) specific data pain, (4) expressed interest and (5) **recorded Sales acceptance**. Exclusions/suppression override marketing decisions. The score is **25 company fit + 20 buyer + 20 problem + 25 interest + 10 evidence = 100**; source provenance and factors are shown in lead detail.
+- **Historical truth:** store an immutable evidence snapshot at acceptance time. A later LLM failure may change the *current queue status* but cannot quietly rewrite an accepted KPI. KPI uses the **half-open Israel-local week** and exposes source records; expansion is not acquisition. A subsequent explicit historical Reject can change the result.
+- **GEO:** use 24 *recorded*, not live-searched, answers. Per engine, gap score = **buyer priority × 20 + missing brand mention 22 + missing owned citation 12 + competitor mentions (4 each, max 12) + wrong claim 25 + brand confusion 15**. Sum by prompt, highest first. Brief output is grounded to approved company/product/pilot facts (`BC`/`PP`); human review is required before publication.
+- **Persistence:** SQLite for contacts, inbound messages, outputs/history, decisions, evidence snapshots, and last KPI pack. Scope is a single-user localhost demo; not a multi-user production deployment.
+- **Frontend:** plain CSS, restrained CSS motion, Lucide icons and React state. No heavyweight UI system; tables remain scrollable at a **390px viewport**.
 
-**Local demo; keep both servers bound to 127.0.0.1.** Open the UI, select **Connect Gemini** in the upper-right corner, paste your own Google AI Studio API key, select `gemini-3.5-flash-lite` (or `gemini-3.8-flash`; legacy 2.5 models remain optional for older projects), and click **Test connection & activate**. This performs a *real* Gemini API request. A verified key is held only in browser tab memory until disconnect/refresh/close. It is not saved in `localStorage`, SQLite, or GitHub, and it is never passed as a URL query parameter. Do not use this demo on a public network, shared browser, or as a production multi-user deployment. Google API quota/billing policy is governed by your AI Studio project and may differ from your consumer Gemini subscription.
+**What I deliberately cut:** no real HubSpot/email/LinkedIn integrations, outbound sends, authentication, public hosting, Kubernetes, paid-key requirement or HubSpot dry-run. The small synthetic qualifier eval is included instead of the optional CRM integration. **With more time:** managed multi-user auth, audited production migrations, a dedicated evaluation corpus and provider metrics, secret management, and accessibility/device regression automation. These are deliberate scope limits, not features implicitly claimed to be present.
 
-After connecting, **New inbound** and **Re-analyze with Gemini** call the fixed Google endpoint through the localhost FastAPI proxy and pass Agent A's validated extraction to deterministic Agent B. Previously saved leads are *not* automatically bulk reprocessed; use Re-analyze explicitly for an existing lead. **Generate with Gemini** in AI visibility creates a live outline/content brief while factual paragraphs are reconstructed from source-approved `BC`/`PP` statements. Failures are visible, never silently treated as successful live AI. A malformed extraction is stored as `needs review`.
+## Files, privacy and reproducibility
 
-If you never enter a key, all original workflows remain functional in clearly labeled offline `rules-only` mode. The GEO brief is correspondingly labeled as the approved-context offline template. No real outbound email/CRM/social messaging is ever sent.
+| Resource | Purpose |
+|---|---|
+| [KPI_PACK.md](KPI_PACK.md) | Source-backed baseline export with <=150-word note to CRO |
+| [PROCESS.md](PROCESS.md) | Transparent AI-assisted workflow; candidate must review in their own first-person voice and honestly report hours |
+| [docs/REVIEWER_GUIDE.md](docs/REVIEWER_GUIDE.md) | Reviewer test script, inputs, expected behaviors and troubleshooting |
+| [docs/acceptance_matrix.md](docs/acceptance_matrix.md) | Original requirements mapped to evidence and tests |
+| [docs/engineering-walkthrough.md](docs/engineering-walkthrough.md) | Code tour and small-change exercise |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Architecture, trust boundaries and trade-offs |
+| [QUALITY_REPORT.md](QUALITY_REPORT.md) | Verified test evidence and explicit limitations |
+| [SECURITY.md](SECURITY.md) | Privacy and single-user security model |
 
-**Local API contracts** (not public internet endpoints):
+The employer-provided pack is intentionally excluded from Git. `.env`, API secrets, SQLite runtime files, caches and Node dependencies are ignored. **Never commit the ZIP, private input, live keys, or a database containing operator activity.**
 
-- `GET /api/ai/providers`: supported models and data-handling policy (no key).
-- `POST /api/ai/verify`: JSON `{ "model": "gemini-2.5-flash" }`, header `X-Gemini-API-Key: <your-key>`; responds only after a real Google test.
-- `POST /api/inbound?model=gemini-2.5-flash`: same inbound JSON contract; optional key header selects Gemini extraction.
-- `POST /api/leads/{id}/analyze?model=gemini-2.5-flash`: re-analyze a selected lead, with optional key header.
-- `POST /api/visibility/brief`: optional key header + model JSON for live grounded GEO generation; without key, offline template.
+If you update a local `KPI_PACK.md` with experimental decisions, do not submit that modified export as the original baseline. To export the *current* local database intentionally, run `python apps/api/export_kpi.py`; it overwrites the local working copy and includes the current counts and CRO note.
 
-The client never stores the API key. Google may process the inbound message content and approved marketing-context claims during live calls: use synthetic/demo data only unless you have authorization to send the content to the external provider. Backend outbound access is constrained to `generativelanguage.googleapis.com` and (for the pre-existing optional Groq environment mode) `api.groq.com`. Credentials are redacted from errors and excluded from persisted records. No retry loops are used.
-
-**Quality gates:** `pytest -q apps/api/tests` (Gemini transport is mocked, no network/key), `npm run test` and `npm run build` under `apps/web`. The historical reporting pack uses frozen acceptance-time evidence; later Gemini re-analysis cannot silently rewrite QL counts. A later explicit human rejection or a new decision with an eligible `decided_at` can change the pack.
-
-
-## Reviewer acceptance: migration, as-of decisions, and KPI consistency
-
-**Update existing Windows checkout without losing decisions:** stop the two local servers, `git status --short`, then `git pull --ff-only` on `feat/revops-core`. Preserve `runtime/` and `data/private/`. Restart Python and Vite using the PowerShell commands above. The SQLite schema is extended automatically with `analysis_history` and `decision_evidence` tables; it does not erase existing contacts, messages or decisions. An old database imported from the supplied synthetic pack receives deterministic, immutable evidence snapshots for its recorded seed decisions.
-
-**Why queue status can differ from weekly QL:** lead status reflects the latest validated analysis and explicit decision; the Oct 4–8 report counts acceptance-time evidence frozen in `decision_evidence`. A later, failed Gemini run must put the current lead in `needs review` but cannot erase a previously recorded, legitimate QL. Explicit business rejections within the week can still change the historical pack. The KPI computation also persists the latest report as `meta.latest_kpi_pack` in SQLite after seeding, after decisions and after report refresh.
-
-**New inbound** now offers `Received at (optional)`: blank defaults to server now; an entered date/time is interpreted as **the browser's local timezone**, converted to ISO UTC and validated by the server. A past Sales acceptance timestamp before the inbound is rejected with a clear error. Do not fake historical events simply to hit a target. The queue separately labels **Unique Leads**, **Inbound Events**, and **Current QL**, with a note explaining why these counts need not equal the week's QLs.
-
-**Current report export:** the `Copy KPI pack` control in Weekly performance obtains the same server-side report as `GET /api/kpi/pack`, with an automatically recomputed note to the CRO (<=150 words) and highest-ranked GEO prompt. Alternatively run `python apps/api/export_kpi.py` from the repository root to write `KPI_PACK.md` from local SQLite. This reflects *your local decisions*. Keep a pristine, unmodified input-data state for the take-home submission; if you have inserted trial decisions, do not commit those altered figures without a clear explanation. Never delete a populated `runtime/` to fix an unrelated issue.
-
-**GEO source checks:** live Gemini chooses only editorial layout and BC/PP source IDs. Factual paragraphs are assembled from approved claims. Additional deterministic topic matching excludes unrelated evidence (for example air-waybill pilot `PP-3` from a carrier-invoice reconciliation section), and unsupported numeric/absolute statements in headings and FAQ questions are blocked. The UI displays source quality warnings. The original `ai_answers.json` captures remain offline snapshots; `Generate with Gemini` is a *separate*, real model call when a key is connected.
-
-**Tests:** `python -m pytest -q apps/api/tests`, `python -m ruff check apps/api --select E4,E7,E9,F63,F7,F82`, `npm run test`, `npm run build`. Backend tests include decision-time evidence immutability, provider failures, as-of/rejection windows, KPI persistence, concurrent API reads, and current vs historical QL. Frontend tests include browser input time conversion, unique identities vs event counts, the new-inbound form, and Gemini connection. CI exercises Python on Windows and Linux and frontend TypeScript/Vitest.
-
-**Manual final check (must be performed on the candidate's PC):** visit `/api/health` and `/api/kpi/week`, verify a clean seed yields 6/4/3/2, paste a genuinely unseen inbound using the React form, use Accept/Reject with valid timestamps, restart and verify persistence, connect a real Gemini key, generate a sourced brief and test a wrong key. Provide no key to GitHub or the chat. The reviewer should compare the exported pack with the current local database and ensure no demo-only decisions are inadvertently presented as original data.
-
-## Remaining deliberate scope limits
-
-This is a local, single-operator review application. There is no real CRM or email integration, authentication, external deployment, distributed transaction queue or large-scale monitoring. The optional HubSpot dry-run bonus is not implemented: assignment scoring explicitly prioritizes correctness and evidential traceability. LLM live tests in CI use mock transport; they do not spend a real user's quota. For production, add multi-user authorization, migrations through a managed migration tool, server-managed secrets, access logs without personal data, secret rotation, and a formal eval corpus across languages and models.
-
-
-## Source-backed firmographics with Gemini (hybrid Agent A)
-
-When Gemini extracts buyer role/intent/pain but omits explicit company-size, industry or region statements, a second deterministic pass **inside Agent A** independently extracts supported statements from the **same inbound message**. Supported facts enter the validated Extraction, marked self-reported and unverified (never written to CRM). An invented employee count or unsupported vertical from the model causes a safe `needs review`, rather than a false QL. Agent B checks the validated Agent A output against the matched CRM record and additionally requires a **relevant grounded quote** for both the data problem and expressed buying interest; an arbitrary quote cannot substantiate `intent=demo`. Unsupported languages, phrasing and places remain unknown, not guessed.
-
-Basic patterns cover common English, Dutch, German and Hebrew examples; they do **not** guarantee complete multilingual understanding. Existing acceptance snapshots and historical KPIs remain immutable during re-analysis. The lead detail shows self-reported firmographics separately from CRM data.
-
-**Existing local DB:** stop both servers, `git pull --ff-only`, restart FastAPI and Vite, reconnect Gemini, then explicitly click **Re-analyze with Gemini** on the affected lead. Old analyses are not silently sent to Google again. No `runtime/` deletion or source ZIP re-import is needed. On a pristine private pack, `python scripts/reviewer_smoke.py` remains 6/4/3/2.
+**Troubleshooting:** if `GET /api/health` is not `seed.ready`, confirm all six files were imported into `data/private`. For a Windows timezone error, reinstall `apps/api/requirements.txt` in `.venv`. If the UI shows an HTTP 500, inspect the backend terminal; a dev-server `Vite ready` message does not prove the API worker started. `npm ci` is recommended for an exact dependency graph. **Do not delete `runtime/` or run `git reset --hard` to fix an error; these operations can destroy decisions.**
