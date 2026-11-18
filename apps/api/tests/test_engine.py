@@ -57,7 +57,9 @@ def test_unknown_is_not_false_and_not_guessed():
     ex = fallback_extract(e, None)
     q=assess(e,None,ex,[],e["received_at"])
     assert not q.conditions["company_fit"]["met"]
+    assert q.conditions["company_fit"]["known"] is False
     assert not q.conditions["relevant_buyer"]["met"]
+    assert q.conditions["relevant_buyer"]["known"] is False
     assert q.status != "QL"
 
 

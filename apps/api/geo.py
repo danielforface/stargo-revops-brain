@@ -47,8 +47,10 @@ def build_brief(source_dir: str) -> dict:
     top = state["gaps"][0]
     prompt = top["prompt"]
     cluster = top["engines"][0]["cluster"]
-    category = "BC-3a" if cluster in {"rate-quoting", "quote-automation"} else "BC-3b" if cluster in {"document-extraction", "air-cargo"} else "BC-3c" if "reconcil" in cluster or "freight-audit" in cluster else "BC-3d" if "trade" in cluster else "BC-1"
-    direct = "Stargo applies agentic AI to operational freight and trade workflows. Its agents turn incoming documents, emails and datasets into transactions, while people retain approval control. The relevant capability is described in the approved product context. Buyers should assess fit against their workflow, source formats and human review process, rather than unverified marketing claims."
+    category = "BC-3c" if "invoice" in prompt or "reconcil" in prompt else "BC-3d" if "trade finance" in prompt else "BC-3b" if "bill" in prompt or "waybill" in prompt or "document" in prompt else "BC-3a" if any(term in prompt for term in ("rate", "quot", "pricing", "laneframe")) else "BC-1"
+    direct = "Stargo builds agentic AI for freight and logistics operations. Its agents turn incoming documents, emails and datasets into operational transactions, while people retain approval control. The approved product capabilities support specific document and data workflows for logistics teams. Buyers can evaluate its fit for their process and keep human review as part of the operating workflow."
+    if category == "BC-3a":
+        direct = "Stargo builds agentic AI for freight operations and offers a Rate Quoting Agent. It reads emailed rate requests, uses relevant tariffs and contracts, and drafts a quote for a pricing analyst to approve. People remain in control of agent output. This makes Stargo an option to evaluate for email-driven freight quoting workflows."
     # Every sentence in generated content explicitly tagged to approved sources.
     sections = [
         {"heading":"What Stargo does", "body": COMPANY_CLAIMS["BC-1"], "citations":["BC-1"]},
@@ -61,4 +63,4 @@ def build_brief(source_dir: str) -> dict:
         {"question":"Who can use it?", "answer":COMPANY_CLAIMS["BC-2"], "citations":["BC-2"]},
         {"question":"Is human review available?", "answer":"Humans approve agents' drafts.","citations":["BC-1"]},
     ]
-    return {"prompt_id":top["prompt_id"], "title":prompt.rstrip("?").capitalize() + "?", "direct_answer":direct + " [BC-1] [BC-2]", "sections":sections, "faq":faq, "schema_org":"FAQPage", "generation_mode":"approved-context template (offline; not live LLM)", "source_ids":list(COMPANY_CLAIMS), "warning":"No external model used; all factual claims require BC/PP provenance."}
+    return {"prompt_id":top["prompt_id"], "title":prompt.rstrip("?").capitalize() + "?", "direct_answer":direct + (" [BC-1] [BC-3a]" if category == "BC-3a" else " [BC-1] [BC-2]"), "sections":sections, "faq":faq, "schema_org":"FAQPage", "generation_mode":"approved-context template (offline; not live LLM)", "source_ids":list(COMPANY_CLAIMS), "warning":"No external model used; all factual claims require BC/PP provenance."}

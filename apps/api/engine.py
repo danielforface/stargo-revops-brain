@@ -247,11 +247,11 @@ def assess(inbound: dict, crm: dict | None, extraction: Extraction, decisions: l
     interest = extraction.intent in {"demo", "pricing", "pilot"} and bool(INTEREST_RE.search(inbound["body"]))
     accepted = any(d["decision"] == "accepted" for d in decisions)
     conditions = {
-        "company_fit": {"met": fit, "evidence": f"vertical={vertical or 'unknown'}; employees={employees if employees is not None else 'unknown'}; region={region or 'unknown'}", "unverified": bool(c.get("_employees_unverified") or c.get("_vertical_unverified") or c.get("_region_unverified"))},
-        "relevant_buyer": {"met": buyer, "evidence": extraction.stated_buyer_role or c.get("job_title") or "unknown"},
-        "specific_data_problem": {"met": problem, "evidence": extraction.stated_data_problem or "not evidenced"},
-        "expressed_interest": {"met": interest, "evidence": extraction.intent},
-        "sales_acceptance": {"met": accepted, "evidence": [d["id"] for d in decisions if d["decision"] == "accepted"]},
+        "company_fit": {"met": fit, "known": bool(vertical and employees is not None and region), "evidence": f"vertical={vertical or 'unknown'}; employees={employees if employees is not None else 'unknown'}; region={region or 'unknown'}", "unverified": bool(c.get("_employees_unverified") or c.get("_vertical_unverified") or c.get("_region_unverified"))},
+        "relevant_buyer": {"met": buyer, "known": bool(extraction.stated_buyer_role or c.get("job_title")), "evidence": extraction.stated_buyer_role or c.get("job_title") or "unknown"},
+        "specific_data_problem": {"met": problem, "known": bool(extraction.stated_data_problem), "evidence": extraction.stated_data_problem or "not evidenced"},
+        "expressed_interest": {"met": interest, "known": bool(INTEREST_RE.search(inbound["body"]) or extraction.intent in {"not interested", "unsubscribe"}), "evidence": extraction.intent},
+        "sales_acceptance": {"met": accepted, "known": True, "evidence": [d["id"] for d in decisions if d["decision"] == "accepted"]},
     }
     weights = {"company_fit": 25, "relevant_buyer": 20, "specific_data_problem": 20, "expressed_interest": 25, "evidence_quality": 10}
     factors = {name: Factor(score=(maximum if conditions[name]["met"] else 0), max_score=maximum, reason=conditions[name]["evidence"] if isinstance(conditions[name]["evidence"], str) else "decision") for name, maximum in weights.items() if name != "evidence_quality"}
