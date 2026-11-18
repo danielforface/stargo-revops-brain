@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Activity, ArrowRight, ArrowUpRight, BarChart3, BrainCircuit, Check, ChevronLeft, ClipboardList, CircleAlert, Plus, RefreshCw, Send, ShieldCheck, Sparkles, KeyRound, Eye, EyeOff, X, Wifi, Zap, LockKeyhole } from 'lucide-react';
+import { Activity, ArrowRight, ArrowUpRight, BarChart3, BrainCircuit, Check, ChevronLeft, ClipboardList, CircleAlert, Plus, RefreshCw, ShieldCheck, Sparkles, KeyRound, Eye, EyeOff, X, Wifi, Zap, LockKeyhole } from 'lucide-react';
 import { request } from './client';
 import './style.css';
 
