@@ -176,6 +176,6 @@ def test_unsubscribe_is_identity_wide(tmp_path):
     unsub=base_event(id="I-2",body="Unsubscribe me. Remove me from your mailing list.",received_at="2026-10-07T09:00:00+03:00")
     db.put("inbound","I-2",unsub,"C-1")
     db.db.commit()
-    assert all(l["analysis"]["qualification"]["status"]=="suppressed" for l in [db.lead("I-1"),db.lead("I-2")])
-    assert all(l["analysis"]["qualification"]["reply_draft"] is None for l in [db.lead("I-1"),db.lead("I-2")])
+    assert all(lead["analysis"]["qualification"]["status"]=="suppressed" for lead in [db.lead("I-1"),db.lead("I-2")])
+    assert all(lead["analysis"]["qualification"]["reply_draft"] is None for lead in [db.lead("I-1"),db.lead("I-2")])
     db.close()
