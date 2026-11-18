@@ -297,11 +297,11 @@ def grounded_heading(heading: str, approved_ids: list[str], notes: list[str]) ->
         supported_topics.update(CLAIM_TOPICS.get(claim_id, set()))
     unsupported = heading_topics - supported_topics
     implies_compliance = bool(re.search(
-        r"\\b(?:trade|regulatory|customs|legal)\\s+complian(?:ce|t)\\b",
+        r"\b(?:trade|regulatory|customs|legal)\s+complian(?:ce|t)\b",
         heading, re.I
     ))
     implies_enterprise_integration = bool(re.search(
-        r"\\benterprise\\s+integration\\b", heading, re.I
+        r"\benterprise\s+integration\b", heading, re.I
     )) and "BC-3b" not in approved_ids
     if not unsupported and not implies_compliance and not implies_enterprise_integration:
         return heading
