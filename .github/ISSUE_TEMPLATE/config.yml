@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Private security report
+    url: https://github.com/danielforface/stargo-revops-brain/security/advisories/new
+    about: Do not disclose security findings in public issues; use private advisories if enabled.
