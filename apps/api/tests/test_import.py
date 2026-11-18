@@ -20,7 +20,8 @@ def test_private_import(tmp_path):
 
 def test_incomplete_import_does_not_write(tmp_path):
     archive=tmp_path/'incomplete.zip'
-    with zipfile.ZipFile(archive,'w') as zf: zf.writestr('data/gtm_events.json','{}')
+    with zipfile.ZipFile(archive,'w') as zf:
+        zf.writestr('data/gtm_events.json','{}')
     with pytest.raises(ValueError,match='Missing'):
         import_pack(archive,tmp_path/'dest')
     assert not (tmp_path/'dest').exists()
