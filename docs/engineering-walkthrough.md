@@ -1,6 +1,6 @@
-# Engineering walkthrough — independent code review preparation
+# Engineering walkthrough — code paths and technical decisions
 
-The purpose of this file is to explain the code to a reviewer **without AI assistance**. It is a reading plan, not a substitute for understanding the implementation.
+This reviewer-facing map links observable behavior to the underlying modules, decisions and tests. The development workflow and extensive implementation assistance from ChatGPT are documented separately in [PROCESS.md](../PROCESS.md).
 
 ## Map of the system
 

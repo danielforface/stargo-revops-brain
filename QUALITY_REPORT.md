@@ -1,45 +1,57 @@
-# Quality and release evidence — Stargo RevOps Brain
+# Quality and review evidence — Stargo RevOps Brain
 
-**Status:** candidate submission candidate, subject to the author's personal review of `PROCESS.md` and actual hours before emailing. The application is a localhost prototype, not a deployed production service.
+**Delivery type:** reviewable, single-operator localhost prototype. It is **not** an authenticated, hosted production application.
 
-## Automated verification (repository evidence)
+## Reproducible automated checks
 
-Final engineering pre-packaging run: [GitHub Actions 44289126662](https://github.com/danielforface/stargo-revops-brain/actions/runs/44289126662) on branch `feat/revops-core`, commit `43f091d0dadcb296ee4e8da3528b279cd19e1c0c`.
+The last verified baseline before this documentation-only presentation update was [main Actions run 44292678441](https://github.com/danielforface/stargo-revops-brain/actions/runs/44292678441), commit `1387cfd4169c2fabfe6d1f4ed421745dbb768e7d`. It completed **3/3 jobs successfully**. For newer commits, inspect the [live GitHub Actions history](https://github.com/danielforface/stargo-revops-brain/actions) rather than assuming old evidence applies to them.
 
-| Gate | Observed result |
-|---|---|
-| Backend Linux, Python 3.12 | **84 passed**, 1 nonblocking dependency warning; compile and Ruff passed |
-| Backend Windows, Python 3.14 | **84 passed**, 1 nonblocking dependency warning; compile and Ruff passed |
-| Frontend Node.js 22, Vitest | **10 passed** |
-| TypeScript + Vite production build | **Passed** |
+| Gate | Baseline evidence |
+| --- | --- |
+| Backend — Linux, Python 3.12 | **84 tests passed**; compile and critical Ruff checks passed |
+| Backend — Windows, Python 3.14 | **84 tests passed**; IANA timezone validation, compile and critical Ruff checks passed |
+| Frontend — Node.js 22 | **10 Vitest tests passed**; TypeScript and Vite production build passed |
 
-Release-packaging commits require a **new final `main` Actions run** before submission. The historical numbers above belong to the exact feature commit, and should not be falsely presented as results of a different commit.
+The test environment uses **independently synthetic fixtures** and **mocked LLM transport**. Automated success is not evidence that a live Gemini key was used in CI, nor a claim about large-scale production performance.
 
-## Private source-pack acceptance (operator-reported)
+## Original source-pack verification — local operator report
 
-The operator ran `python scripts/reviewer_smoke.py` with the supplied v2 ZIP. It reported: **19 CRM contacts, 20 valid inbound messages, 11 decisions, 12 pipeline events, one rejected invalid inbound; 6/4/3/2 KPI counts**, missing historical-reactivation remains Unknown; failure/restart/historical replay passed. The smoke uses a temporary SQLite database and does not send outbound network traffic.
+A separate Windows run with the original private v2 source pack was reported by the project operator:
 
-The operator also reported a successful **Gemini live connection**, generated a source-grounded GEO brief and re-analyzed one source-backed lead to five verified QL gates, owner Noa and score 100. These are **manual operator observations**, not claims that CI used a real key.
+- **19** contacts, **20** valid inbound records, **11** Sales decisions, **12** pipeline events, **1** malformed inbound quarantined.
+- Weekly baseline **6 Qualified Leads / 4 meetings booked / 3 meetings held / 2 opportunities**; `historical-reactivation` reported as **Unknown**, not zero.
+- `python scripts/reviewer_smoke.py` validated the source baseline in a temporary SQLite file, including historical decision replay and failure cases; the existing working database was not modified by this smoke check.
+- A live Gemini connection, grounded GEO brief and corrected five-gate qualification flow were also observed during local acceptance.
 
-## Defects found and corrected during development
+**Evidence classification matters:** those last four points are *operator-reported local observations*, not repeatable external API assertions by GitHub CI. Reviewers can reproduce the source-specific results using their own assignment ZIP and key if desired.
 
-- Missing Windows IANA timezone package caused server startup failure. Windows-only `tzdata` dependency and a Windows CI job now cover it.
-- Sharing an unlocked SQLite connection across FastAPI threads caused intermittent HTTP 500 during concurrent dashboard loads. Storage operations are serialized; long live Gemini calls do not block all dashboard reads.
-- Historical QLs could drift when Gemini re-analysis failed or changed the current extraction. Immutable acceptance-time evidence and additive migration protect the frozen weekly report.
-- A self-reported owner at a customs brokerage was incorrectly marked `needs review` when Gemini omitted company-size/vertical/location. Agent A now corroborates those details against the original source message; unsupported model claims remain untrusted.
-- GEO output sometimes associated unrelated pilot evidence with workflow copy, or implied compliance in a mixed heading. Approved claim topic checks now remove/rewrite unsupported editorial text, with visible quality notes.
-- The frontend originally assumed every HTTP response was JSON and hid the underlying server 500; it now displays meaningful errors.
+## Significant failure modes addressed
 
-## Known limitations and manual acceptance
+| Observed problem | Engineering response | Regression or evidence path |
+| --- | --- | --- |
+| Windows could not resolve `Asia/Jerusalem` | Add Windows `tzdata` and CI boot coverage | `test_timezone_portability.py`, Windows job |
+| Concurrent dashboard reads returned HTTP 500 | Serialize shared SQLite operations; keep external model network wait outside DB lock | `test_concurrent_api.py`, API integration |
+| Gemini key validation rejected a supported key form | Correct local validation and provider model handling | `test_gemini.py`, separate live operator check |
+| Re-analysis could disturb accepted historical KPIs | Append analysis history and freeze evidence at Sales acceptance | `test_decision_snapshots.py` |
+| Model omission of explicit company facts changed current qualification | Corroborate only text-supported, self-reported firmographics inside Agent A | `test_live_firmographics.py` |
+| GEO brief cited an unrelated pilot or overstated a claim | Enforce claim-topic compatibility and safe editorial headings | `test_geo_semantics.py` |
 
-- Existing employer-provided synthetic source files are **not** published in this repository. Reviewers need their original ZIP to reproduce the reference KPI pack.
-- The optional Gemini connection uses a temporary browser-entered API key and localhost proxy. No full production auth, vault, multitenancy, rate limiter or external CRM integration is included.
-- Offline multilingual extraction is heuristic; novel messages may remain `needs review`. LLM transport tests run offline with mocks, not live quotas.
-- The KPI artifact checked into the repo represents a **clean source-pack state**; a reviewer who accepts/rejects test leads can intentionally change their local working database.
-- The author must verify first-person claims and honest time report in `PROCESS.md` and in the submission email. No screenshot can substitute for this final human approval.
+## Deliberate boundaries
 
-See [README.md](README.md), [docs/REVIEWER_GUIDE.md](docs/REVIEWER_GUIDE.md), [docs/acceptance_matrix.md](docs/acceptance_matrix.md) and [KPI_PACK.md](KPI_PACK.md).
+- Employer-provided synthetic source records are **not public in this repository**. Reviewers need the original ZIP for the reference KPI baseline.
+- There is no real HubSpot/CRM synchronization, customer email sender, multi-tenant authorization, production secret vault or public deployment.
+- The 24 GEO answers are an **offline recorded snapshot**; live Gemini is optional and cannot convert that snapshot into live measurements of three external engines.
+- Human acceptance is required. A provider failure or prompt-injection text cannot autonomously create a Qualified Lead.
+- A reviewer's own local Accept/Reject decisions can change the working database's KPI; the committed `KPI_PACK.md` represents the pristine source-pack export.
 
-## Final default-branch handoff
+## Reviewer handoff and provenance
 
-The feature implementation and reviewer documentation were merged through [PR #1](https://github.com/danielforface/stargo-revops-brain/pull/1), preserving individual engineering commits. The merge commit was `ed50fc43fbb1e324c37d9d73f84f95d80b1dec2a` and its [main-branch Actions run 44292200875](https://github.com/danielforface/stargo-revops-brain/actions/runs/44292200875) completed **3/3 PASS**: **84 Python tests** each on Windows/Linux, **10 frontend tests**, Ruff/compile and a Vite production build using committed `package-lock.json` with `npm ci`. The public default branch contains README, PROCESS, KPI_PACK, the reviewer guide, app code, tests and CI; no secrets or private source ZIP are tracked. A documentation-only prompt-excerpt update after that merge must also receive green main CI before sharing.
+- [Setup and project scope](README.md)
+- [Step-by-step reviewer guide](docs/REVIEWER_GUIDE.md)
+- [Requirements ↔ evidence matrix](docs/acceptance_matrix.md)
+- [Engineering process and AI collaboration disclosure](PROCESS.md)
+- [KPI source evidence](KPI_PACK.md)
+- [Architectural boundaries](ARCHITECTURE.md)
+- [Full commit history](https://github.com/danielforface/stargo-revops-brain/commits/main)
+
+The feature implementation and initial reviewer materials were merged through [PR #1](https://github.com/danielforface/stargo-revops-brain/pull/1). The original commits remain available for inspection. No private source ZIP or API key is intentionally included in the public repository.
