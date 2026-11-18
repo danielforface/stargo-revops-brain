@@ -54,3 +54,34 @@ def test_reject_when_section_cites_only_unrelated_claims(tmp_path,monkeypatch):
               {'heading':'Approved document workflows','claim_ids':['BC-3b']}]
     with pytest.raises(gemini.GeminiError,match='only claims unrelated'):
         make_brief(tmp_path,monkeypatch,sections)
+
+
+def test_faq_only_unrelated_claims_are_rejected(tmp_path, monkeypatch):
+    """Question-answer citations must support that question's subject too."""
+    (tmp_path / 'brand_context.md').write_text('BC-1 BC-3a PP-1')
+    monkeypatch.setattr(gemini,'analyze_answers',lambda *_:{'gaps':[{'prompt_id':'Q1','prompt':'best freight pricing software'}]})
+    monkeypatch.setattr(gemini,'_generate',lambda *_args,**_kwargs:{
+        'title':'Freight pricing software assessment',
+        'direct_claim_ids':['BC-1','BC-3a','PP-1'],
+        'sections':[{'heading':'Rate quoting','claim_ids':['BC-3a']}]*3,
+        'faq':[{'question':'How are carrier invoices reconciled?','claim_ids':['PP-3']},
+               {'question':'Which teams are supported?','claim_ids':['BC-2']},
+               {'question':'How are quotes prepared?','claim_ids':['BC-3a']}],
+        'schema_org':'FAQPage',
+    })
+    with pytest.raises(gemini.GeminiError,match='only claims unrelated'):
+        gemini.brief(KEY,MODEL,str(tmp_path))
+
+
+def test_direct_answer_must_use_topic_appropriate_source_ids(tmp_path,monkeypatch):
+    (tmp_path / 'brand_context.md').write_text('BC-1 BC-3a PP-1')
+    monkeypatch.setattr(gemini,'analyze_answers',lambda *_:{'gaps':[{'prompt_id':'Q1','prompt':'freight rate quoting alternatives'}]})
+    monkeypatch.setattr(gemini,'_generate',lambda *_args,**_kwargs:{
+        'title':'Freight quoting alternatives for operators',
+        'direct_claim_ids':['PP-3','BC-3b'],
+        'sections':[{'heading':'Rate quoting','claim_ids':['BC-3a']}]*3,
+        'faq':[{'question':'How are quotes prepared?','claim_ids':['BC-3a']}]*3,
+        'schema_org':'FAQPage',
+    })
+    with pytest.raises(gemini.GeminiError,match='only claims unrelated'):
+        gemini.brief(KEY,MODEL,str(tmp_path))

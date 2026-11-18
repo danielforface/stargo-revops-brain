@@ -214,9 +214,13 @@ def validate_editorial(text: str) -> str:
     return text
 
 
-def filter_topic_claims(claim_ids: list[str], heading: str, warnings: list[str]) -> tuple[list[str], str]:
+def filter_topic_claims(claim_ids: list[str], heading: str, warnings: list[str], limit: int = 3) -> tuple[list[str], str]:
+    if not isinstance(claim_ids, list) or not claim_ids or len(claim_ids) > limit:
+        raise GeminiError("Gemini selected an invalid number of claims.")
     topics = topic_of(heading)
     ids = list(claim_ids)
+    if any(ident not in COMPANY_CLAIMS for ident in ids):
+        raise GeminiError("Gemini returned a claim outside approved brand context.")
     # A heading about a specific workflow must not attach an unrelated pilot.
     if topics != {"general"}:
         matched = [ident for ident in ids if CLAIM_TOPICS.get(ident, set()) & topics or ident == "BC-1"]
@@ -226,7 +230,7 @@ def filter_topic_claims(claim_ids: list[str], heading: str, warnings: list[str])
         ids = matched
     if not ids:
         raise GeminiError("Gemini cited only claims unrelated to this section; revise and retry.")
-    return _selected_claims(ids, 3)
+    return _selected_claims(ids, limit)
 
 
 def brief(api_key: str, model: str, source_dir: str) -> dict:
@@ -257,11 +261,23 @@ def brief(api_key: str, model: str, source_dir: str) -> dict:
         raise GeminiError("Gemini brief title is invalid.")
     validate_editorial(response["title"])
     quality_notes: list[str] = []
-    direct_ids, direct = _selected_claims(response.get("direct_claim_ids"), 3)
+    direct_ids, direct = filter_topic_claims(response.get("direct_claim_ids"), top["prompt"], quality_notes)
     words = len(direct.split())
     if not 40 <= words <= 60:
-        # Derive a safe approved answer instead of publishing model-invented filler.
-        direct_ids, direct = _selected_claims(["BC-1", "BC-3a", "BC-3c"], 3)
+        # Use an explicitly approved, topic-specific answer, not hallucinated filler.
+        topics = topic_of(top["prompt"])
+        if topics & {"quote", "rate"}:
+            safe_ids = ["BC-1", "BC-3a", "PP-1"]
+        elif topics & {"invoice", "reconciliation"}:
+            safe_ids = ["BC-1", "BC-3c", "BC-2"]
+        elif topics & {"document", "awb", "bol"}:
+            safe_ids = ["BC-1", "BC-3b", "PP-2"]
+        elif "finance" in topics:
+            safe_ids = ["BC-1", "BC-3d", "BC-2"]
+        else:
+            safe_ids = ["BC-1", "BC-3a", "BC-3c"]
+        direct_ids, direct = _selected_claims(safe_ids, 3)
+        quality_notes.append("Direct answer rebuilt from topic-specific approved claims to satisfy the length contract.")
     if not 40 <= len(direct.split()) <= 60:
         raise GeminiError("Approved direct-answer claims cannot satisfy the length contract.")
     sections = []
@@ -278,7 +294,7 @@ def brief(api_key: str, model: str, source_dir: str) -> dict:
         if not isinstance(question, str) or not 8 <= len(question) <= 160:
             raise GeminiError("Gemini supplied an invalid FAQ question.")
         validate_editorial(question)
-        ids, copy = _selected_claims(item.get("claim_ids"), 2)
+        ids, copy = filter_topic_claims(item.get("claim_ids"), question, quality_notes, 2)
         faq.append({"question": question, "answer": copy, "citations": ids})
     return {
         "prompt_id": top["prompt_id"], "title": response["title"],
