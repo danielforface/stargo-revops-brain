@@ -197,7 +197,8 @@ def fallback_extract(inbound: dict, crm: dict | None) -> Extraction:
     evidence = [part[:260] for part in sentence_parts if PROBLEM_RE.search(part) or INTEREST_RE.search(part)][:5]
     if not evidence and message:
         evidence = [message[:220]]
-    # Unseen messages may state a buyer role; do not treat it as verified CRM data.
+    # Unseen inbound messages may declare a buyer role even without a CRM record.
+    # Preserve the verbatim role phrase as a claim, not a verified company fact.
     role = (crm or {}).get("job_title")
     if not role:
         role_match = re.search(
@@ -209,8 +210,6 @@ def fallback_extract(inbound: dict, crm: dict | None) -> Extraction:
         if role_match:
             role = role_match.group(0)
         elif re.search(r"\bI own\b", message, re.I):
-            # A self-declared owner can be a buyer at a business under 200 people.
-            # Ownership is a claim; employment and vertical remain separate QL checks.
             role = "Owner (self-reported)"
         elif re.search(r"(?:מנהלת?|ראש) (?:מחלקת )?(?:תפעול|רכש|כספים|תמחור)", message):
             role = "Operations Manager (self-reported, Hebrew)"
@@ -262,13 +261,15 @@ def assess(inbound: dict, crm: dict | None, extraction: Extraction, decisions: l
     fit = vertical in VERTICALS and employees is not None and employees >= 20 and region is not None
     buyer = buyer_role(extraction.stated_buyer_role or c.get("job_title"), employees)
     problem = bool(extraction.stated_data_problem)
-    interest = extraction.intent in {"demo", "pricing", "pilot"} and bool(INTEREST_RE.search(inbound["body"]))
+    # Agent B consumes validated Agent A signals, never the raw message body.
+    # A quote must be grounded by Store.analyze before it reaches this function.
+    interest = extraction.intent in {"demo", "pricing", "pilot"} and bool(extraction.evidence_quotes)
     accepted = any(d["decision"] == "accepted" for d in decisions)
     conditions = {
         "company_fit": {"met": fit, "known": bool(vertical and employees is not None and region), "evidence": f"vertical={vertical or 'unknown'}; employees={employees if employees is not None else 'unknown'}; region={region or 'unknown'}", "unverified": bool(c.get("_employees_unverified") or c.get("_vertical_unverified") or c.get("_region_unverified"))},
         "relevant_buyer": {"met": buyer, "known": bool(extraction.stated_buyer_role or c.get("job_title")), "evidence": extraction.stated_buyer_role or c.get("job_title") or "unknown"},
         "specific_data_problem": {"met": problem, "known": bool(extraction.stated_data_problem), "evidence": extraction.stated_data_problem or "not evidenced"},
-        "expressed_interest": {"met": interest, "known": bool(INTEREST_RE.search(inbound["body"]) or extraction.intent in {"not interested", "unsubscribe"}), "evidence": extraction.intent},
+        "expressed_interest": {"met": interest, "known": bool(extraction.evidence_quotes or extraction.intent in {"not interested", "unsubscribe"}), "evidence": extraction.intent},
         "sales_acceptance": {"met": accepted, "known": True, "evidence": [d["id"] for d in decisions if d["decision"] == "accepted"]},
     }
     weights = {"company_fit": 25, "relevant_buyer": 20, "specific_data_problem": 20, "expressed_interest": 25, "evidence_quality": 10}
@@ -277,7 +278,8 @@ def assess(inbound: dict, crm: dict | None, extraction: Extraction, decisions: l
     score = sum(f.score for f in factors.values())
     current_decision = sorted(decisions, key=lambda d: (stamp(d["decided_at"]), d["id"]))[-1] if decisions else None
     owner = ROUTE.get(region, "Triage queue")
-    # Suppression outranks ordinary account ownership, even for existing customers.
+    # Suppression is a universal communication-safety rule, including existing customers.
+    # It outranks ordinary account ownership/exclusion classification.
     if extraction.intent == "unsubscribe":
         status, owner = "suppressed", None
     elif extraction.injection_detected:
@@ -308,12 +310,6 @@ def assess(inbound: dict, crm: dict | None, extraction: Extraction, decisions: l
 
 
 def synchronized(method):
-    """Protect the shared SQLite connection across FastAPI worker threads.
-
-    Reentrant because KPI -> lead -> analyze -> items may nest. The entire
-    logical operation is serialized, including lazy materialization of analysis
-    rows; otherwise concurrent readers and writers can corrupt DB cursor state.
-    """
     @wraps(method)
     def guarded(self, *args, **kwargs):
         with self._lock:
@@ -322,7 +318,7 @@ def synchronized(method):
 
 
 class Store:
-    """One SQLite source of truth; seed rows upsert, human actions append-only."""
+    """One SQLite source of truth; immutable decision evidence and analysis runs."""
 
     def __init__(self, path: str):
         self._lock = RLock()
@@ -340,6 +336,15 @@ class Store:
         CREATE TABLE IF NOT EXISTS analysis (inbound_id TEXT PRIMARY KEY, extraction TEXT, qualification TEXT, error TEXT, mode TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS rejected_seed (id TEXT PRIMARY KEY, reason TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS meta (name TEXT PRIMARY KEY, payload TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS analysis_history (
+          id TEXT PRIMARY KEY, inbound_id TEXT NOT NULL, created_at TEXT NOT NULL,
+          extraction TEXT, qualification TEXT NOT NULL, error TEXT, mode TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_analysis_history ON analysis_history(inbound_id, created_at);
+        CREATE TABLE IF NOT EXISTS decision_evidence (
+          decision_id TEXT PRIMARY KEY, contact_id TEXT NOT NULL, inbound_id TEXT,
+          evidence_json TEXT NOT NULL, evidence_mode TEXT NOT NULL, captured_at TEXT NOT NULL
+        );
         CREATE INDEX IF NOT EXISTS idx_inbound_contact ON inbound(contact_id);
         CREATE INDEX IF NOT EXISTS idx_decisions_contact ON decisions(contact_id);
         """)
@@ -378,6 +383,54 @@ class Store:
         return cid, None
 
     @synchronized
+    def snapshot_decision(self, decision: dict, cid: str, *, seed: bool = False) -> dict:
+        """Freeze business evidence at acceptance; later re-analysis cannot rewrite it.
+
+        Synthetic imported decisions use rules-only interpretation of the original
+        source message as the historical evidence baseline, even if today's
+        model interpretation has changed. New decisions snapshot the last
+        successful analyzed extraction at the moment of operator acceptance.
+        """
+        existing = self.db.execute("SELECT * FROM decision_evidence WHERE decision_id=?", (decision["id"],)).fetchone()
+        if existing:
+            return json.loads(existing["evidence_json"])
+        cutoff = stamp(decision["decided_at"])
+        messages = sorted(
+            (m for m in self.items("inbound") if m["_contact_id"] == cid and stamp(m["received_at"]) <= cutoff),
+            key=lambda m: stamp(m["received_at"]),
+        )
+        crm = next((c for c in self.items("contacts") if c["record_id"] == cid), None)
+        gates = ("company_fit", "relevant_buyer", "specific_data_problem", "expressed_interest")
+        captured = {"eligible": False, "conditions": {}, "inbound_id": None, "source": "not evidenced"}
+        for msg in messages:
+            ext = None
+            if not seed:
+                stored = self.db.execute("SELECT extraction, mode FROM analysis WHERE inbound_id=?", (msg["id"],)).fetchone()
+                if stored and stored["extraction"] and stored["mode"] != "failed":
+                    try:
+                        ext = Extraction.model_validate_json(stored["extraction"])
+                    except (ValueError, ValidationError):
+                        ext = None
+            if ext is None and (seed or (not stored if not seed else False)):
+                # Synthetic seed and pre-migration direct decision fixtures have no
+                # stored analysis yet; use reproducible, labelled rules evidence.
+                ext = fallback_extract(msg, crm)
+            if ext is None:
+                continue
+            if ext.injection_detected or INJECTION_RE.search(msg["body"]):
+                continue
+            result = assess(msg, crm, ext, [], messages[0]["received_at"])
+            if all(result.conditions[g]["met"] for g in gates):
+                captured = {"eligible": True, "conditions": {g: result.conditions[g] for g in gates},
+                            "inbound_id": msg["id"], "source": msg.get("source") or "source not recorded"}
+                break
+        mode = "seed-rules-snapshot" if seed else "operator-analysis-snapshot"
+        self.db.execute("INSERT OR IGNORE INTO decision_evidence VALUES (?,?,?,?,?,?)", (
+            decision["id"], cid, captured["inbound_id"], json.dumps(captured), mode, iso_now(),
+        ))
+        return captured
+
+    @synchronized
     def seed(self, source_dir: str) -> dict:
         path = Path(source_dir)
         with (path / "crm_export.csv").open(newline="", encoding="utf-8-sig") as fh:
@@ -402,7 +455,14 @@ class Store:
         for p in data["pipeline_events"]:
             cid, _ = self.contact_for(p.get("contact_email"), None)
             self.put("pipeline", p["id"], p, cid)
+        # Migrate old installations without touching operator-created decisions.
+        # Only the supplied source IDs receive a deterministic historical baseline.
+        for d in data["sales_decisions"]:
+            if d.get("decision") == "accepted":
+                cid, _ = self.contact_for(d.get("contact_email"), None)
+                self.snapshot_decision(d, cid, seed=True)
         self.db.commit()
+        self.kpi()  # Persist the initial reporting pack after idempotent seeding.
         return {"contacts": len(self.items("contacts")), "inbound": len(self.items("inbound")), "decisions": len(self.items("decisions")), "pipeline": len(self.items("pipeline")), "rejected": self.db.execute("SELECT count(*) FROM rejected_seed").fetchone()[0]}
 
     @synchronized
@@ -415,17 +475,19 @@ class Store:
         self.db.commit()
         return inbound.id
 
-    @synchronized
     def analyze(self, inbound_id: str, extractor=None) -> dict:
-        row = self.db.execute("SELECT * FROM inbound WHERE id=?", (inbound_id,)).fetchone()
-        if not row:
-            raise KeyError(inbound_id)
-        inbound = json.loads(row["payload"])
-        cid = row["contact_id"]
-        crm = next((c for c in self.items("contacts") if c["record_id"] == cid), None)
-        messages = [m for m in self.items("inbound") if m["_contact_id"] == cid]
-        earliest = min((m["received_at"] for m in messages), key=stamp)
-        decisions = [d for d in self.items("decisions") if d["_contact_id"] == cid]
+        # Release the SQLite lock while a live Gemini request is in flight:
+        # unrelated UI reads must not wait for slow, external model inference.
+        with self._lock:
+            row = self.db.execute("SELECT * FROM inbound WHERE id=?", (inbound_id,)).fetchone()
+            if not row:
+                raise KeyError(inbound_id)
+            inbound = json.loads(row["payload"])
+            cid = row["contact_id"]
+            crm = next((c for c in self.items("contacts") if c["record_id"] == cid), None)
+            messages = [m for m in self.items("inbound") if m["_contact_id"] == cid]
+            earliest = min((m["received_at"] for m in messages), key=stamp)
+            decisions = [d for d in self.items("decisions") if d["_contact_id"] == cid]
         try:
             extracted = extractor(inbound, crm) if extractor else fallback_extract(inbound, crm)
             extracted = Extraction.model_validate(extracted)
@@ -439,8 +501,13 @@ class Store:
         except (Exception) as ex:
             # Do not log raw message, email, exception string, prompts or keys.
             result = {"extraction": None, "qualification": {"score": 0, "factors": {}, "conditions": {}, "status": "needs review", "owner": (crm or {}).get("owner") or "Triage queue", "rationale": "Analysis unavailable; human review required", "reply_draft": None}, "error": type(ex).__name__, "mode": "failed"}
-        self.db.execute("INSERT OR REPLACE INTO analysis VALUES (?,?,?,?,?)", (inbound_id, json.dumps(result["extraction"]) if result["extraction"] is not None else None, json.dumps(result["qualification"]), result["error"], result["mode"]))
-        self.db.commit()
+        with self._lock:
+            ex_json = json.dumps(result["extraction"]) if result["extraction"] is not None else None
+            q_json = json.dumps(result["qualification"])
+            self.db.execute("INSERT OR REPLACE INTO analysis VALUES (?,?,?,?,?)", (inbound_id, ex_json, q_json, result["error"], result["mode"]))
+            self.db.execute("INSERT INTO analysis_history VALUES (?,?,?,?,?,?,?)", (
+                "AN-" + uuid.uuid4().hex, inbound_id, iso_now(), ex_json, q_json, result["error"], result["mode"]))
+            self.db.commit()
         return result
 
     @synchronized
@@ -464,7 +531,7 @@ class Store:
         # Suppression applies to the identity across all channels, not just its unsubscribe event.
         if any(fallback_extract(m, crm).intent == "unsubscribe" for m in (x for x in self.items("inbound") if x["_contact_id"] == cid)):
             outcome["status"], outcome["owner"], outcome["reply_draft"] = "suppressed", None, None
-        return {"inbound": inbound, "contact_id": cid, "contact": crm, "analysis": {"extraction": json.loads(analysis["extraction"]) if analysis["extraction"] else None, "qualification": outcome, "error": analysis["error"], "mode": analysis["mode"]}, "decisions": sorted(decisions, key=lambda x: x["decided_at"])}
+        return {"inbound": inbound, "contact_id": cid, "contact": crm, "analysis": {"extraction": json.loads(analysis["extraction"]) if analysis["extraction"] else None, "qualification": outcome, "error": analysis["error"], "mode": analysis["mode"]}, "decisions": sorted(decisions, key=lambda x: stamp(x["decided_at"]))}
 
     @synchronized
     def leads(self) -> list[dict]:
@@ -490,9 +557,15 @@ class Store:
         if lead["analysis"]["qualification"]["status"] == "suppressed" and decision == "accepted":
             raise ValueError("suppressed contact cannot be accepted")
         decided = stamp(decided_at)
+        earliest = min(stamp(m["received_at"]) for m in self.items("inbound") if m["_contact_id"] == cid)
+        if decided < earliest:
+            raise ValueError("decision predates the first inbound")
         entry = {"id": "SD-" + uuid.uuid4().hex[:14], "contact_email": lead["inbound"].get("from_email"), "decision": decision, "decided_by": actor, "decided_at": decided.isoformat(), "recorded_at": iso_now(), "note": note, "inbound_id": inbound_id, "analysis_mode": lead["analysis"]["mode"]}
         self.put("decisions", entry["id"], entry, cid)
+        if decision == "accepted":
+            self.snapshot_decision(entry, cid)
         self.db.commit()
+        self.kpi()  # Persist the revised pack as part of the same operator action.
         return self.lead(inbound_id)
 
     @synchronized
@@ -526,20 +599,16 @@ class Store:
                 continue
             contact = contacts.get(cid, {})
             initial = first_inbound[cid]
-            # Only evidence received on/before acceptance may qualify that decision.
-            # Future messages cannot retroactively validate an earlier QL.
-            gate_4 = any(
-                all(
-                    self.lead(m["id"])["analysis"]["qualification"].get("conditions", {}).get(k, {}).get("met", False)
-                    for k in ("company_fit", "relevant_buyer", "specific_data_problem", "expressed_interest")
-                )
-                for m in by_contact[cid]
-                if stamp(m["received_at"]) <= stamp(first["decided_at"])
-            )
-            if not gate_4:
+            # Accepted evidence is frozen at decision time. Live Gemini analysis
+            # after a decision cannot silently alter previously reported QLs.
+            frozen = self.snapshot_decision(first, cid)
+            if not frozen["eligible"]:
                 continue
             excluded, why = exclusion_reason(contact, first_inbound[cid]["received_at"], first["decided_at"])
-            evidence = {"id": first["id"], "contact_id": cid, "name": initial["from_name"], "decided_at": first["decided_at"], "inbound_id": initial["id"], "source": initial.get("source") or "source not recorded", "rule": why or "five QL conditions met; first accepted decision in week"}
+            evidence = {"id": first["id"], "contact_id": cid, "name": initial["from_name"],
+                        "decided_at": first["decided_at"], "inbound_id": frozen["inbound_id"],
+                        "source": initial.get("source") or "source not recorded",
+                        "snapshot": frozen["conditions"], "rule": why or "five QL conditions frozen at sales acceptance"}
             if excluded:
                 if why == "existing customer":
                     expansion["qualified_leads"].append(evidence)
@@ -561,7 +630,13 @@ class Store:
             (expansion if why == "existing customer" else entries if not excluded else None)[key].append(evidence) if (not excluded or why == "existing customer") else None
         feed = json.loads(self.db.execute("SELECT payload FROM meta WHERE name='feed_status'").fetchone()[0]) if self.db.execute("SELECT 1 FROM meta WHERE name='feed_status'").fetchone() else {}
         result = {name: {"actual": len(rows), "target": TARGETS[name], "variance": len(rows) - TARGETS[name], "records": rows} for name, rows in entries.items()}
-        return {"period": {"start": WEEK_START.isoformat(), "end_exclusive": WEEK_END.isoformat(), "timezone": "Asia/Jerusalem"}, "metrics": result, "by_source": {k: {"actual": len(set(v)), "contact_ids": sorted(set(v))} for k,v in by_source.items()}, "feed_status": feed, "unknown_feeds": sorted(k for k,v in feed.items() if v != "received"), "expansion": {k: {"actual": len(v), "records": v} for k,v in expansion.items()}, "definition": "QL counted once by first accepted decision; source from earliest inbound. Meetings and opportunities by event timestamp. Unknown feeds are not zero."}
+        report = {"period": {"start": WEEK_START.isoformat(), "end_exclusive": WEEK_END.isoformat(), "timezone": "Asia/Jerusalem"}, "metrics": result, "by_source": {k: {"actual": len(set(v)), "contact_ids": sorted(set(v))} for k,v in by_source.items()}, "feed_status": feed, "unknown_feeds": sorted(k for k,v in feed.items() if v != "received"), "expansion": {k: {"actual": len(v), "records": v} for k,v in expansion.items()}, "definition": "QL counted once by first accepted decision; source from earliest inbound. Meetings and opportunities by event timestamp. Unknown feeds are not zero."}
+        content = json.dumps(report, ensure_ascii=False, sort_keys=True)
+        existing = self.db.execute("SELECT payload FROM meta WHERE name='latest_kpi_pack'").fetchone()
+        if not existing or existing["payload"] != content:
+            self.db.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", ("latest_kpi_pack", content))
+            self.db.commit()
+        return report
 
 
 def exclusion_reason(c: dict, first_inbound: str | None, accepted_at: str | None) -> tuple[bool, str]:

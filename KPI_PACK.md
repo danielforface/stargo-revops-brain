@@ -49,12 +49,12 @@ Unknown source feeds must not be represented as a zero count.
 
 | Source ID | Person / contact | Timestamp | Inclusion basis |
 |---|---|---|---|
-| SD-001 | Pieter Claes (`HS-1004`) | 2026-10-04T10:05:00+03:00 | five QL conditions met; first accepted decision in week |
-| SD-002 | Anouk de Vries (`HS-1001`) | 2026-10-05T09:40:00+03:00 | five QL conditions met; first accepted decision in week |
-| SD-003 | Rachel Lim (`HS-1009`) | 2026-10-06T08:15:00+03:00 | five QL conditions met; first accepted decision in week |
-| SD-007 | Tom Becker (`HS-1013`) | 2026-10-07T09:00:00+03:00 | five QL conditions met; first accepted decision in week |
-| SD-008 | Yossi Mizrahi (`EXT-95e4970b23835c54`) | 2026-10-07T15:00:00+03:00 | five QL conditions met; first accepted decision in week |
-| SD-009 | Noam Levi (`HS-1017`) | 2026-10-07T16:20:00+03:00 | five QL conditions met; first accepted decision in week |
+| SD-001 | Pieter Claes (`HS-1004`) | 2026-10-04T10:05:00+03:00 | five QL conditions frozen at sales acceptance |
+| SD-002 | Anouk de Vries (`HS-1001`) | 2026-10-05T09:40:00+03:00 | five QL conditions frozen at sales acceptance |
+| SD-003 | Rachel Lim (`HS-1009`) | 2026-10-06T08:15:00+03:00 | five QL conditions frozen at sales acceptance |
+| SD-007 | Tom Becker (`HS-1013`) | 2026-10-07T09:00:00+03:00 | five QL conditions frozen at sales acceptance |
+| SD-008 | Yossi Mizrahi (`EXT-95e4970b23835c54`) | 2026-10-07T15:00:00+03:00 | five QL conditions frozen at sales acceptance |
+| SD-009 | Noam Levi (`HS-1017`) | 2026-10-07T16:20:00+03:00 | five QL conditions frozen at sales acceptance |
 
 ### Meetings Booked (4)
 
@@ -83,12 +83,12 @@ Unknown source feeds must not be represented as a zero count.
 ## Assumptions / boundaries
 
 - Source attribution is the earliest inbound event for a person matched by normalized email or LinkedIn ID.
-- QLs count once per person on first accepted decision date, only if all four objective conditions were met.
+- QLs count once per person on first accepted decision date using the immutable evidence snapshot captured at that decision.
 - Pipeline events are counted by their own event timestamps; existing customer events appear in expansion.
 - Dates with `Z` are converted to Asia/Jerusalem before half-open window comparison.
 - The synthetic seed's malformed inbound `IN-019` is quarantined, not silently made into a lead.
-- Deal creation from a date-only CRM field is interpreted at local start of day; same-day ambiguity should be reviewed for a real integration.
+- The exported pack represents the local database at export time and may differ from the pristine submitted sample if operator decisions were recorded.
 
 ## Note to CRO
 
-The week delivered 6 acquisition QLs against 25, 4 meetings booked against 15, 3 held against 12, and 2 new opportunities against 5. The missing historical-reactivation feed remains unknown, not a zero. A visibility gap in freight pricing/vendor discovery reduces the chance buyers encounter Stargo when compiling a shortlist. Next week, publish one approved, claim-cited answer page addressing the highest-ranked buyer question, with citations to approved product context and a human review of performance.
+This reporting week delivered 6 against 25 (shortfall 19) QLs, 4 against 15 (shortfall 11) meetings booked, 3 against 12 (shortfall 9) meetings held and 2 against 5 (shortfall 3) opportunities. Unavailable feeds: historical-reactivation. The top GEO gap is 'alternatives to Laneframe for freight pricing' (score 318): low brand mentions and/or owned citations make vendor discovery less reliable. Next week, publish one human-approved, BC/PP-cited answer page for this buyer question and recapture the same prompts to measure mentions and citations.

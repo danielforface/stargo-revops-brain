@@ -23,14 +23,21 @@ During the first local Pytest run, the assistant reported **14 passed, 1 failed*
 
 Before submission I will review the claims in this document, reproduce the startup instructions on my own machine, inspect representative QL and KPI calculations, check a failed-provider scenario and demonstrate a small code change without AI. These are **planned reviewer activities**, not claims that I have already performed them.
 
-
 ## Engineering verification update (18 Nov 2026)
 
-The development assistant verified the original source-pack counts and the key API endpoints, added regression coverage for temporal qualification, unsubscribe precedence, replayed sales rejection, and self-reported new-buyer detection, and corrected an employees-plural parsing defect found by a failed regression test. The local offline suite reached **25 passed** after these changes. This is tool-reported verification by the assistant, **not** a claim that Daniel personally ran it.
+The development assistant subsequently verified the original source-pack counts and the key API endpoints, added regression coverage for temporal qualification, unsubscribe precedence, a replayed sales rejection, and self-reported new-buyer detection, and corrected an `employees` plural parsing error found by a failed regression test. The local offline suite reached **25 passed** after these changes. This is tool-reported verification by the assistant, **not** a claim that Daniel personally ran it.
 
-The local environment did not have React/TypeScript npm dependencies installed; frontend compilation was **not verified locally**. The prior GitHub Actions run #5 on the old commit was successful. The new commit must be certified by a subsequent run before declaring the PR ready for review.
+The local environment did not have React/TypeScript npm dependencies installed; frontend compilation in that environment is **not verified**. A GitHub Actions frontend job is configured but its actual status must be confirmed before declaring the project ready for submission.
+
+## 18 Nov 2026 — Live Gemini and operator experience upgrade
+
+The AI development assistant designed and implemented an optional operator-entered Gemini API-key workflow, a fixed-host HTTP backend adapter, schema/evidence checks, source-grounded GEO generation, an upgraded React UI and offline provider tests. The request to prioritize Gemini and a stronger corporate-grade experience came from the candidate. The implementation preserves deterministic QL decisions and never sends outbound customer messages.
+
+The assistant consulted Google AI's current API/key documentation and tested Python contracts with mocked provider responses. Actual external model quality, billing-tier availability and end-to-end acceptance of a real key **cannot be claimed verified** until the candidate connects their own key and completes the live walkthrough. This paragraph documents assistant work, **not** code manually authored by the candidate. The first-person narrative above must be reviewed and approved by the candidate before external submission.
 
 
-## AI-assisted engineering update — 18 November 2026
+## Additional assistant-led engineering cycle — evidence for candidate review
 
-The candidate requested Gemini API integration through a frontend-entered key, plus a substantial visual/interaction upgrade. The development assistant implemented the local server proxy, model testing, schema-constrained extraction, BC/PP-grounded live GEO content planning, React connection UI, animations, mobile/responsive styles, and offline provider tests. The assistant reviewed Google's official API/key documentation and ran local Python tests with mocked Gemini responses. This work was AI-assisted; it is **not** presented as code manually authored by the candidate. Real model calls with the candidate's own API key and a local UI review are still required before any claim of end-to-end live acceptance. Candidate must personally review this document before submission.
+The candidate directed the assistant to finish the identified P0/P1 backlog rather than asking for more design drafts. The assistant inspected the v2 assignment and QL standard, reproduced a missing Yossi QL (5 rather than the pristine pack's 6) and implemented a decision-time evidence ledger to prevent later LLM output changes from rewriting accepted weekly QLs. It also added an additive migration of existing SQLite state, a dynamic KPI Pack/CRO note, optional historical received-at entry in React, clearer identity/event counters, Gemini-aware source matching for GEO, and offline tests for these flows. The source pack was kept out of the public repository. The assistant performed a local clean-seed and legacy database migration smoke test and ran offline Pytest before preparing the PR change.
+
+**Candidate review is still required:** verify this narrative matches what actually happened, record the total *actual time spent* and the coding/AI tools used, and be prepared to personally explain the implementation. Do not claim manual coding, manual tests, live Gemini traffic, production deployment or post-submission work that did not happen. The candidate's live UI test and GitHub Actions status for the final commit should be appended after they are independently verified.

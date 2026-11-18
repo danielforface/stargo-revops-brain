@@ -35,22 +35,17 @@ npm run dev
 
 Open `http://127.0.0.1:5173`. The backend serves `http://127.0.0.1:8000/api/health` and OpenAPI documentation at `http://127.0.0.1:8000/docs`.
 
-Windows PowerShell, from the repository root (the path may be anywhere, not necessarily your Desktop):
+Windows PowerShell, from the repository root:
 
 ```powershell
-py scripts/import_take_home.py "$env:USERPROFILE\Downloads\Stargo_RevOps_Take_Home_Pack_v2.zip"
+py scripts/import_take_home.py "C:\path\to\Stargo_RevOps_Take_Home_Pack_v2.zip"
 py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r apps/api/requirements.txt
-$env:STARGO_DATA_DIR = (Resolve-Path ".\data\private").Path
-$env:STARGO_DB_PATH = "runtime/revops.sqlite3"
-$env:STARGO_LLM_PROVIDER = "rules-only"
-python -m uvicorn api:app --app-dir apps/api --reload --host 127.0.0.1 --port 8000
+.\\.venv\\Scripts\\Activate.ps1
+pip install -r apps/api/requirements.txt
+$env:STARGO_DATA_DIR = (Resolve-Path data/private).Path
+$env:STARGO_DB_PATH = 'runtime/revops.sqlite3'
+uvicorn api:app --app-dir apps/api --reload
 ```
-
-**Windows time-zone support:** The backend uses `ZoneInfo("Asia/Jerusalem")` for the reporting window. Windows/Python may not provide the IANA time-zone database. `requirements.txt` now installs the official Python `tzdata` package automatically on Windows. If you installed requirements before this fix, while the project's `.venv` is activated run `python -m pip install tzdata`, stop the old Uvicorn process with Ctrl+C, and restart it. A line saying “Uvicorn running” is not proof that the worker initialized: verify `http://127.0.0.1:8000/api/health` returns `{"ok":true,...}` and `seed.ready` is true.
-
-If PowerShell blocks `Activate.ps1`, run `Set-ExecutionPolicy -Scope Process Bypass` once in the current window and try again. When `$HOME\Desktop` is missing (e.g., OneDrive-redirected Desktop), work in any existing directory; all commands are relative to the repo root.
 
 Once seeded, the SQLite database can be restarted safely; the importer uses stable source IDs and does **not** overwrite human decisions. The original malformed `IN-019` record is quarantined with an error class; it does not crash setup. The 19 CRM records, 20 valid inbound records, 11 sales decisions and 12 pipeline events are stored at clean import.
 
@@ -97,7 +92,7 @@ The checked-in `KPI_PACK.md` is generated from the original seed. It is not hand
 ## Design choices and trade-offs
 
 - **No microservices or message broker**: unnecessary in a self-contained assignment, easier to audit.
-- **SQLite**: transparent relational state, stable IDs, quick local setup; no migrations or concurrent writer scale promised.
+- **SQLite**: transparent relational state, stable IDs, transactional writes and additive migration tables; no concurrent-writer horizontal scaling is promised.
 - **Rules-only fallback**: testable offline and resilient, but weaker than a multilingual model for unseen phrasing. All claims about model quality are bounded by this limitation.
 - **Deliberate cuts**: no live HubSpot integration, outbound delivery, auth, heavy telemetry, Kubernetes, animation platform, paid LLM dependency, or unsupported claims about lead-company data.
 - **Access model**: local single-operator demo. No authentication is required by the brief; **do not expose this API to the internet**. CORS is limited to local Vite origins.
@@ -105,39 +100,43 @@ The checked-in `KPI_PACK.md` is generated from the original seed. It is not hand
 
 See [ARCHITECTURE.md](ARCHITECTURE.md), [PROCESS.md](PROCESS.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [docs/engineering-walkthrough.md](docs/engineering-walkthrough.md).
 
-## Windows browser returns `Internal Server Error` / KPI JSON parse error
+## Gemini Live — session-only key in the operator UI
 
-If the health endpoint is ready but `http://127.0.0.1:5173/api/kpi/week` shows HTTP 500, update to the latest `feat/revops-core` branch and restart **both** Python and Vite after `git pull --ff-only`. This issue was caused by concurrent `/api/leads` and `/api/kpi/week` requests sharing an unlocked SQLite connection. Store operations are now serialized using a reentrant lock and tested with concurrent requests. The UI also handles non-JSON server failures without crashing other tabs. Existing SQLite decisions are preserved; **do not delete `runtime/`**. The `favicon.ico` 404 and React DevTools suggestion in the browser console are not KPI errors.
+**Local demo; keep both servers bound to 127.0.0.1.** Open the UI, select **Connect Gemini** in the upper-right corner, paste your own Google AI Studio API key, select `gemini-3.5-flash-lite` (or `gemini-3.8-flash`; legacy 2.5 models remain optional for older projects), and click **Test connection & activate**. This performs a *real* Gemini API request. A verified key is held only in browser tab memory until disconnect/refresh/close. It is not saved in `localStorage`, SQLite, or GitHub, and it is never passed as a URL query parameter. Do not use this demo on a public network, shared browser, or as a production multi-user deployment. Google API quota/billing policy is governed by your AI Studio project and may differ from your consumer Gemini subscription.
 
+After connecting, **New inbound** and **Re-analyze with Gemini** call the fixed Google endpoint through the localhost FastAPI proxy and pass Agent A's validated extraction to deterministic Agent B. Previously saved leads are *not* automatically bulk reprocessed; use Re-analyze explicitly for an existing lead. **Generate with Gemini** in AI visibility creates a live outline/content brief while factual paragraphs are reconstructed from source-approved `BC`/`PP` statements. Failures are visible, never silently treated as successful live AI. A malformed extraction is stored as `needs review`.
 
-## Live Gemini connector — operator quick start
+If you never enter a key, all original workflows remain functional in clearly labeled offline `rules-only` mode. The GEO brief is correspondingly labeled as the approved-context offline template. No real outbound email/CRM/social messaging is ever sent.
 
-Run the Backend and Frontend normally, with `STARGO_LLM_PROVIDER=rules-only`. Open the UI on `http://127.0.0.1:5173`, choose **Connect Gemini** in the top-right, paste a Google AI Studio API key and click **Test connection & activate**. This triggers a real Google API call. A success indicator means the key was accepted for the selected model.
+**Local API contracts** (not public internet endpoints):
 
-While the key is connected, **New inbound** and **Re-analyze with Gemini** use Gemini for evidence extraction; deterministic Agent B still enforces all five QL gates. The existing seeded leads are *not* automatically reprocessed; select a lead to run live analysis deliberately. In **AI visibility**, **Generate with Gemini** produces a live content plan whose factual text is reconstructed only from approved BC/PP source IDs. **Disconnect** or reload the browser to return to offline, rules-only mode.
+- `GET /api/ai/providers`: supported models and data-handling policy (no key).
+- `POST /api/ai/verify`: JSON `{ "model": "gemini-2.5-flash" }`, header `X-Gemini-API-Key: <your-key>`; responds only after a real Google test.
+- `POST /api/inbound?model=gemini-2.5-flash`: same inbound JSON contract; optional key header selects Gemini extraction.
+- `POST /api/leads/{id}/analyze?model=gemini-2.5-flash`: re-analyze a selected lead, with optional key header.
+- `POST /api/visibility/brief`: optional key header + model JSON for live grounded GEO generation; without key, offline template.
 
-**Security:** The key is stored in memory for the current browser tab only, never in localStorage, SQLite, .env, source, logs or URLs. It is sent to the local FastAPI server in a request header, and from there to a fixed Google HTTPS endpoint. **Only use this on your own computer at 127.0.0.1**; browser-entered keys are not a production secret management solution. Google may process the submitted lead messages and approved brand claims; use only demo/authorized data. API free-tier availability and quota are controlled by the Google AI Studio project, not by a consumer Gemini subscription.
+The client never stores the API key. Google may process the inbound message content and approved marketing-context claims during live calls: use synthetic/demo data only unless you have authorization to send the content to the external provider. Backend outbound access is constrained to `generativelanguage.googleapis.com` and (for the pre-existing optional Groq environment mode) `api.groq.com`. Credentials are redacted from errors and excluded from persisted records. No retry loops are used.
 
-Recommended models: `gemini-2.5-flash` (default) or `gemini-2.5-flash-lite`. If Google rejects the model or key, the connection is not marked active. A live extraction failure leaves the lead in `needs review`, with no reply sent.
-
-API endpoints: `GET /api/ai/providers`, `POST /api/ai/verify` (JSON model + `X-Gemini-API-Key`), optional key on `POST /api/inbound`, `POST /api/leads/{id}/analyze`, and `POST /api/visibility/brief`.
-
-No user text is automatically sent to Gemini on page load or during KPI refresh. Only an explicit operator action sends lead content. Screens are animated with restrained CSS transitions and honor `prefers-reduced-motion`.
-
-Test:
-```powershell
-python -m pytest -q apps/api/tests
-cd apps/web
-npm install
-npm run test
-npm run build
-```
+**Quality gates:** `pytest -q apps/api/tests` (Gemini transport is mocked, no network/key), `npm run test` and `npm run build` under `apps/web`. The historical reporting pack uses frozen acceptance-time evidence; later Gemini re-analysis cannot silently rewrite QL counts. A later explicit human rejection or a new decision with an eligible `decided_at` can change the pack.
 
 
-## Gemini API keys minted after 2026 (AQ. format)
+## Reviewer acceptance: migration, as-of decisions, and KPI consistency
 
-Google AI Studio now issues authorization keys beginning with `AQ.` as well as legacy `AIza` keys. A previous local validator rejected dots and incorrectly displayed “Enter a valid Gemini API key” *before contacting Google*. This has been fixed: both key formats pass safe, minimal syntax checks, and only Google decides whether a key is valid. Use the **copy icon** on the AI Studio API Keys page; the shortened key preview is not the secret.
+**Update existing Windows checkout without losing decisions:** stop the two local servers, `git status --short`, then `git pull --ff-only` on `feat/revops-core`. Preserve `runtime/` and `data/private/`. Restart Python and Vite using the PowerShell commands above. The SQLite schema is extended automatically with `analysis_history` and `decision_evidence` tables; it does not erase existing contacts, messages or decisions. An old database imported from the supplied synthetic pack receives deterministic, immutable evidence snapshots for its recorded seed decisions.
 
-For new projects prefer **Gemini 3.5 Flash-Lite** (the UI default) or **Gemini 3.8 Flash**. Some newly created projects cannot call legacy 2.5 models. HTTP 401 indicates an authentication problem, HTTP 403 project access/permissions, HTTP 404 model unavailable, and HTTP 429 quota/rate limiting. A key's billing tier alone does not prove access to a selected model. The application does not auto-cycle through keys or models; choose the model explicitly and verify it.
+**Why queue status can differ from weekly QL:** lead status reflects the latest validated analysis and explicit decision; the Oct 4–8 report counts acceptance-time evidence frozen in `decision_evidence`. A later, failed Gemini run must put the current lead in `needs review` but cannot erase a previously recorded, legitimate QL. Explicit business rejections within the week can still change the historical pack. The KPI computation also persists the latest report as `meta.latest_kpi_pack` in SQLite after seeding, after decisions and after report refresh.
 
-No secrets are checked into the repository or used in automated tests. Live connectivity remains a separate test to perform on the local operator machine. For security, don't paste a key into chat, issue comments, logs, or screenshots.
+**New inbound** now offers `Received at (optional)`: blank defaults to server now; an entered date/time is interpreted as **the browser's local timezone**, converted to ISO UTC and validated by the server. A past Sales acceptance timestamp before the inbound is rejected with a clear error. Do not fake historical events simply to hit a target. The queue separately labels **Unique Leads**, **Inbound Events**, and **Current QL**, with a note explaining why these counts need not equal the week's QLs.
+
+**Current report export:** the `Copy KPI pack` control in Weekly performance obtains the same server-side report as `GET /api/kpi/pack`, with an automatically recomputed note to the CRO (<=150 words) and highest-ranked GEO prompt. Alternatively run `python apps/api/export_kpi.py` from the repository root to write `KPI_PACK.md` from local SQLite. This reflects *your local decisions*. Keep a pristine, unmodified input-data state for the take-home submission; if you have inserted trial decisions, do not commit those altered figures without a clear explanation. Never delete a populated `runtime/` to fix an unrelated issue.
+
+**GEO source checks:** live Gemini chooses only editorial layout and BC/PP source IDs. Factual paragraphs are assembled from approved claims. Additional deterministic topic matching excludes unrelated evidence (for example air-waybill pilot `PP-3` from a carrier-invoice reconciliation section), and unsupported numeric/absolute statements in headings and FAQ questions are blocked. The UI displays source quality warnings. The original `ai_answers.json` captures remain offline snapshots; `Generate with Gemini` is a *separate*, real model call when a key is connected.
+
+**Tests:** `python -m pytest -q apps/api/tests`, `python -m ruff check apps/api --select E4,E7,E9,F63,F7,F82`, `npm run test`, `npm run build`. Backend tests include decision-time evidence immutability, provider failures, as-of/rejection windows, KPI persistence, concurrent API reads, and current vs historical QL. Frontend tests include browser input time conversion, unique identities vs event counts, the new-inbound form, and Gemini connection. CI exercises Python on Windows and Linux and frontend TypeScript/Vitest.
+
+**Manual final check (must be performed on the candidate's PC):** visit `/api/health` and `/api/kpi/week`, verify a clean seed yields 6/4/3/2, paste a genuinely unseen inbound using the React form, use Accept/Reject with valid timestamps, restart and verify persistence, connect a real Gemini key, generate a sourced brief and test a wrong key. Provide no key to GitHub or the chat. The reviewer should compare the exported pack with the current local database and ensure no demo-only decisions are inadvertently presented as original data.
+
+## Remaining deliberate scope limits
+
+This is a local, single-operator review application. There is no real CRM or email integration, authentication, external deployment, distributed transaction queue or large-scale monitoring. The optional HubSpot dry-run bonus is not implemented: assignment scoring explicitly prioritizes correctness and evidential traceability. LLM live tests in CI use mock transport; they do not spend a real user's quota. For production, add multi-user authorization, migrations through a managed migration tool, server-managed secrets, access logs without personal data, secret rotation, and a formal eval corpus across languages and models.

@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from engine import Extraction, Inbound, Store, fallback_extract
 from geo import analyze_answers, build_brief
+from export_kpi import render as render_kpi
 from gemini import ALLOWED_MODELS, DEFAULT_MODEL, GeminiError, brief as gemini_brief, extract as gemini_extract, verify as gemini_verify
 
 BASE = Path(__file__).resolve().parents[2]
@@ -128,14 +129,24 @@ def decision(inbound_id: str, body: DecisionRequest):
         return result
     except KeyError:
         raise HTTPException(404, "Lead not found") from None
-    except ValueError:
-        raise HTTPException(422, "Invalid decision timestamp or suppressed lead") from None
+    except ValueError as exc:
+        # Only local, static error codes. No message text, customer data or secrets.
+        reason = str(exc)
+        detail = reason if reason in {"suppressed contact cannot be accepted", "decision predates the first inbound"} else "Invalid decision timestamp"
+        raise HTTPException(422, detail) from None
 
 
 @app.get("/api/kpi/week")
 def kpi():
     require_ready()
     return store.kpi()
+
+
+@app.get("/api/kpi/pack")
+def kpi_export():
+    """Return the same recomputed report exported in KPI_PACK.md (no second formula)."""
+    require_ready()
+    return {"markdown": render_kpi(store.kpi(), analyze_answers(DATA))}
 
 
 @app.get("/api/kpi/drilldown")

@@ -17,7 +17,6 @@ from engine import Extraction
 from geo import COMPANY_CLAIMS, analyze_answers
 
 GEMINI_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
-# 2.5 remains available only to some existing projects; prefer current 3.x models.
 DEFAULT_MODEL = "gemini-3.5-flash-lite"
 ALLOWED_MODELS = ("gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash-lite", "gemini-2.5-flash")
 INTENT_TYPES = ["demo", "pricing", "pilot", "not interested", "unsubscribe", "auto-reply", "partnership", "investor", "job seeker", "other"]
@@ -35,20 +34,8 @@ def checked_model(value: str) -> str:
 
 
 def checked_key(value: str | None) -> str:
-    """Accept both legacy AIza keys and current AQ. authorization keys.
-
-    Format checks are intentionally minimal: Google, not a brittle local regex,
-    decides if the credential is valid. New AI Studio keys contain a literal dot.
-    Reject partial/masked placeholders, whitespace and control characters before
-    passing a secret in the fixed HTTPS request header.
-    """
-    if (
-        not isinstance(value, str)
-        or not 16 <= len(value) <= 512
-        or not value.isascii()
-        or any(not (33 <= ord(char) <= 126) for char in value)
-        or "..." in value
-    ):
+    if (not isinstance(value, str) or not 16 <= len(value) <= 512 or not value.isascii()
+            or any(not 33 <= ord(ch) <= 126 for ch in value) or "..." in value):
         raise GeminiError("Enter a valid, complete Gemini API key. Use the copy icon in Google AI Studio; masked previews are not keys.")
     return value
 
@@ -58,8 +45,6 @@ def _generate(api_key: str, model: str, system: str, data: dict, schema: dict | 
     model = checked_model(model)
     api_key = checked_key(api_key)
     config: dict[str, Any] = {"temperature": 0.1, "maxOutputTokens": max_tokens}
-    # Gemini 3.x uses thinkingLevel, not the 2.5 thinkingBudget=0 contract.
-    # Let the newer model choose its default; do not send legacy configuration.
     if model.startswith("gemini-2.5-"):
         config["thinkingConfig"] = {"thinkingBudget": 0}
     if schema is not None:
@@ -191,6 +176,59 @@ def _selected_claims(ids: list, count: int = 3) -> tuple[list[str], str]:
     return chosen, " ".join(COMPANY_CLAIMS[ident] for ident in chosen)
 
 
+# Source IDs are permitted only for the topic that their approved claim supports.
+# Model-written structure is not evidence; titles and FAQ questions remain editorial.
+CLAIM_TOPICS = {
+    "BC-1": {"general"}, "BC-2": {"general", "audience"},
+    "BC-3a": {"quote", "rate"}, "PP-1": {"quote", "rate"},
+    "BC-3b": {"document", "awb", "bol"}, "PP-2": {"document", "bol"},
+    "PP-3": {"document", "awb"}, "BC-3c": {"invoice", "reconciliation"},
+    "BC-3d": {"finance", "document"},
+}
+
+
+def topic_of(text: str) -> set[str]:
+    low = text.lower()
+    topics: set[str] = set()
+    patterns = {
+        "invoice": r"invoice|contract reconciliation|billing discrepancy",
+        "reconciliation": r"reconcil|matching contracts",
+        "quote": r"quot|rfq|pricing analyst|spot price",
+        "rate": r"tariff|freight rate|carrier rate|spot rate",
+        "finance": r"trade.finance|letter of credit|financ|document checking",
+        "bol": r"bill[s]? of lading|\bbol\b",
+        "awb": r"air.?waybill|air cargo|\bawb\b",
+        "document": r"document|data extract|data process|digitiz|re.key",
+        "audience": r"who (?:can|should|uses)|which (?:teams|sectors)|industries|supported teams",
+    }
+    for name, regex in patterns.items():
+        if re.search(regex, low):
+            topics.add(name)
+    return topics or {"general"}
+
+
+def validate_editorial(text: str) -> str:
+    """Avoid unapproved numeric or absolute claims in generated headlines/FAQ."""
+    if not isinstance(text, str) or re.search(r"\d+|[$€£%]|guarantee|always|never fails|best in the world", text, re.I):
+        raise GeminiError("Gemini generated an unsupported numerical or absolute claim in editorial text.")
+    return text
+
+
+def filter_topic_claims(claim_ids: list[str], heading: str, warnings: list[str]) -> tuple[list[str], str]:
+    topics = topic_of(heading)
+    ids = list(claim_ids)
+    # A heading about a specific workflow must not attach an unrelated pilot.
+    if topics != {"general"}:
+        matched = [ident for ident in ids if CLAIM_TOPICS.get(ident, set()) & topics or ident == "BC-1"]
+        ignored = [ident for ident in ids if ident not in matched]
+        if ignored:
+            warnings.append("Excluded unrelated source ID(s) from a section: " + ", ".join(ignored))
+        ids = matched
+    if not ids:
+        raise GeminiError("Gemini cited only claims unrelated to this section; revise and retry.")
+    return _selected_claims(ids, 3)
+
+
 def brief(api_key: str, model: str, source_dir: str) -> dict:
     original = (Path(source_dir) / "brand_context.md").read_text(encoding="utf8")
     if "BC-1" not in original or "BC-3a" not in original or "PP-1" not in original:
@@ -217,6 +255,8 @@ def brief(api_key: str, model: str, source_dir: str) -> dict:
         raise GeminiError("Gemini brief did not meet the section/FAQ count contract.")
     if not isinstance(response.get("title"), str) or not 5 <= len(response["title"]) <= 160:
         raise GeminiError("Gemini brief title is invalid.")
+    validate_editorial(response["title"])
+    quality_notes: list[str] = []
     direct_ids, direct = _selected_claims(response.get("direct_claim_ids"), 3)
     words = len(direct.split())
     if not 40 <= words <= 60:
@@ -229,19 +269,22 @@ def brief(api_key: str, model: str, source_dir: str) -> dict:
         heading = section.get("heading") if isinstance(section, dict) else None
         if not isinstance(heading, str) or not 5 <= len(heading) <= 120:
             raise GeminiError("Gemini supplied an invalid section heading.")
-        ids, copy = _selected_claims(section.get("claim_ids"), 3)
+        validate_editorial(heading)
+        ids, copy = filter_topic_claims(section.get("claim_ids"), heading, quality_notes)
         sections.append({"heading": heading, "body": copy, "citations": ids})
     faq = []
     for item in response["faq"]:
         question = item.get("question") if isinstance(item, dict) else None
         if not isinstance(question, str) or not 8 <= len(question) <= 160:
             raise GeminiError("Gemini supplied an invalid FAQ question.")
+        validate_editorial(question)
         ids, copy = _selected_claims(item.get("claim_ids"), 2)
         faq.append({"question": question, "answer": copy, "citations": ids})
     return {
         "prompt_id": top["prompt_id"], "title": response["title"],
         "direct_answer": direct + " " + " ".join(f"[{ident}]" for ident in direct_ids),
         "sections": sections, "faq": faq, "schema_org": response.get("schema_org", "FAQPage"),
+        "quality_notes": quality_notes,
         "generation_mode": "gemini-live — structure generated by AI; claims reconstructed from approved BC/PP sources",
         "source_ids": sorted(set(direct_ids + [id for sec in sections for id in sec["citations"]] + [id for item in faq for id in item["citations"]])),
         "warning": "Editorial human review required before publishing. No outbound messages sent.",
