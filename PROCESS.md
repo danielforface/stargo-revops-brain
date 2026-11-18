@@ -16,6 +16,23 @@ Representative steering instructions I gave included: making the repository unde
 
 I did **not** manually author every file, and I do not claim that I did. The AI-assisted code, tests and documents are visible in the Git history. My own contribution includes task framing, constraints, architecture priorities, real-world validation, defect reports and the review/decision to use the resulting design. The code walkthrough must be done by me without an AI assistant.
 
+## Selected real steering prompts
+
+The following excerpts are from my actual Hebrew instructions during this task; these are **examples**, not an invented transcript. The original discussions and source requirements were substantially longer:
+
+> "אני רוצה מעטפת מלאה ומקצועית לריפו אחת שתאפשר למפתחים נוספים להיכנס להבין ..."  
+> *I asked for a contributor-ready professional repository rather than a one-off script.*
+
+> "אני משלם לגימיני ... אספק מפתח API במסגרת המערכת בפרונטאנד"  
+> *I instructed the assistant to integrate user-entered live Gemini rather than depending on a paid key inside the codebase.*
+
+> "אוקי אתה ממלא את כל חלקך בפיתוח ואם נדרשים פעולות ממני אבצע אותם לפי רשימה מסודרת אחרי שתסיים את חלקך המלא מלא מלא!!!"  
+> *I delegated implementation/testing and reserved actual local checks and final approval for myself.*
+
+I also supplied concrete error output: `ZoneInfoNotFoundError: 'No time zone found with key Asia/Jerusalem'`, the browser's `/api/kpi/week HTTP 500`, and `Enter a valid Gemini API key from Google AI Studio`. These were not hypothetical test cases: the assistant changed the implementation and regression tests because of those failures. Later, I pasted the live Gemini extraction and five-gate qualification detail, exposing the omitted firmographics and validating the source-grounded fix.
+
+These prompt excerpts were selected and edited for readability with AI help; I must verify them and the surrounding first-person narrative before sending the assignment.
+
 ## Where verification changed the design
 
 1. **Server boot on Windows.** My first local start failed because `ZoneInfo('Asia/Jerusalem')` did not find IANA timezone data. I shared the Python traceback. The assistant added a Windows-specific `tzdata` dependency and a Windows/Python 3.14 CI job. I re-ran the server and received a healthy seed response.

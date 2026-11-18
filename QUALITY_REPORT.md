@@ -39,3 +39,7 @@ The operator also reported a successful **Gemini live connection**, generated a 
 - The author must verify first-person claims and honest time report in `PROCESS.md` and in the submission email. No screenshot can substitute for this final human approval.
 
 See [README.md](README.md), [docs/REVIEWER_GUIDE.md](docs/REVIEWER_GUIDE.md), [docs/acceptance_matrix.md](docs/acceptance_matrix.md) and [KPI_PACK.md](KPI_PACK.md).
+
+## Final default-branch handoff
+
+The feature implementation and reviewer documentation were merged through [PR #1](https://github.com/danielforface/stargo-revops-brain/pull/1), preserving individual engineering commits. The merge commit was `ed50fc43fbb1e324c37d9d73f84f95d80b1dec2a` and its [main-branch Actions run 44292200875](https://github.com/danielforface/stargo-revops-brain/actions/runs/44292200875) completed **3/3 PASS**: **84 Python tests** each on Windows/Linux, **10 frontend tests**, Ruff/compile and a Vite production build using committed `package-lock.json` with `npm ci`. The public default branch contains README, PROCESS, KPI_PACK, the reviewer guide, app code, tests and CI; no secrets or private source ZIP are tracked. A documentation-only prompt-excerpt update after that merge must also receive green main CI before sharing.
