@@ -57,3 +57,10 @@ AI answer captures -> deterministic GEO scoring -> approved-context brief
 - The offline extraction is intentionally heuristic and weaker for unseen languages; production requires eval-set calibration and human correction.
 - The no-auth local demo is not an appropriate internet deployment without access controls, rate limiting and privacy review.
 - A new source without verified firmographics is held for review rather than inferred by brand name or email domain.
+
+
+## Gemini Live (operator-supplied key, local-only)
+
+`apps/web/src/main.tsx` owns an ephemeral tab-memory key. `apps/web/src/client.ts` is the single error-safe same-origin API boundary. `apps/api/api.py` accepts a key header only on explicitly triggered operations, forwarding it to `apps/api/gemini.py` on a fixed host and allowlisted model. The backend does not log, return, or persist keys. This is a single-operator localhost demo — production would require managed secrets, TLS, authentication, authorization and rate limiting.
+
+The model is only Agent A's untrusted natural-language extractor; server-side schema and source-evidence checks gate it before `engine.assess()` applies deterministic policies. A failed response becomes `needs review`, not a qualified or disqualified lead. GEO uses live Gemini for title/outline/source-selection/FAQ and rebuilds **all factual text** from approved source IDs in `geo.COMPANY_CLAIMS`. Unknown source IDs are rejected. No mail, CRM or social integration sends messages.

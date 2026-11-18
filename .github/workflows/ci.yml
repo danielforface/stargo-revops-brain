@@ -30,6 +30,9 @@ jobs:
       - name: Dependencies
         working-directory: apps/web
         run: npm install --no-audit --no-fund
+      - name: Frontend client contract tests (offline)
+        working-directory: apps/web
+        run: npm run test
       - name: Typecheck and production build
         working-directory: apps/web
         run: npm run build

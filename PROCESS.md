@@ -29,3 +29,8 @@ Before submission I will review the claims in this document, reproduce the start
 The development assistant verified the original source-pack counts and the key API endpoints, added regression coverage for temporal qualification, unsubscribe precedence, replayed sales rejection, and self-reported new-buyer detection, and corrected an employees-plural parsing defect found by a failed regression test. The local offline suite reached **25 passed** after these changes. This is tool-reported verification by the assistant, **not** a claim that Daniel personally ran it.
 
 The local environment did not have React/TypeScript npm dependencies installed; frontend compilation was **not verified locally**. The prior GitHub Actions run #5 on the old commit was successful. The new commit must be certified by a subsequent run before declaring the PR ready for review.
+
+
+## AI-assisted engineering update — 18 November 2026
+
+The candidate requested Gemini API integration through a frontend-entered key, plus a substantial visual/interaction upgrade. The development assistant implemented the local server proxy, model testing, schema-constrained extraction, BC/PP-grounded live GEO content planning, React connection UI, animations, mobile/responsive styles, and offline provider tests. The assistant reviewed Google's official API/key documentation and ran local Python tests with mocked Gemini responses. This work was AI-assisted; it is **not** presented as code manually authored by the candidate. Real model calls with the candidate's own API key and a local UI review are still required before any claim of end-to-end live acceptance. Candidate must personally review this document before submission.

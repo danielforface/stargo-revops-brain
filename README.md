@@ -108,3 +108,27 @@ See [ARCHITECTURE.md](ARCHITECTURE.md), [PROCESS.md](PROCESS.md), [CONTRIBUTING.
 ## Windows browser returns `Internal Server Error` / KPI JSON parse error
 
 If the health endpoint is ready but `http://127.0.0.1:5173/api/kpi/week` shows HTTP 500, update to the latest `feat/revops-core` branch and restart **both** Python and Vite after `git pull --ff-only`. This issue was caused by concurrent `/api/leads` and `/api/kpi/week` requests sharing an unlocked SQLite connection. Store operations are now serialized using a reentrant lock and tested with concurrent requests. The UI also handles non-JSON server failures without crashing other tabs. Existing SQLite decisions are preserved; **do not delete `runtime/`**. The `favicon.ico` 404 and React DevTools suggestion in the browser console are not KPI errors.
+
+
+## Live Gemini connector — operator quick start
+
+Run the Backend and Frontend normally, with `STARGO_LLM_PROVIDER=rules-only`. Open the UI on `http://127.0.0.1:5173`, choose **Connect Gemini** in the top-right, paste a Google AI Studio API key and click **Test connection & activate**. This triggers a real Google API call. A success indicator means the key was accepted for the selected model.
+
+While the key is connected, **New inbound** and **Re-analyze with Gemini** use Gemini for evidence extraction; deterministic Agent B still enforces all five QL gates. The existing seeded leads are *not* automatically reprocessed; select a lead to run live analysis deliberately. In **AI visibility**, **Generate with Gemini** produces a live content plan whose factual text is reconstructed only from approved BC/PP source IDs. **Disconnect** or reload the browser to return to offline, rules-only mode.
+
+**Security:** The key is stored in memory for the current browser tab only, never in localStorage, SQLite, .env, source, logs or URLs. It is sent to the local FastAPI server in a request header, and from there to a fixed Google HTTPS endpoint. **Only use this on your own computer at 127.0.0.1**; browser-entered keys are not a production secret management solution. Google may process the submitted lead messages and approved brand claims; use only demo/authorized data. API free-tier availability and quota are controlled by the Google AI Studio project, not by a consumer Gemini subscription.
+
+Recommended models: `gemini-2.5-flash` (default) or `gemini-2.5-flash-lite`. If Google rejects the model or key, the connection is not marked active. A live extraction failure leaves the lead in `needs review`, with no reply sent.
+
+API endpoints: `GET /api/ai/providers`, `POST /api/ai/verify` (JSON model + `X-Gemini-API-Key`), optional key on `POST /api/inbound`, `POST /api/leads/{id}/analyze`, and `POST /api/visibility/brief`.
+
+No user text is automatically sent to Gemini on page load or during KPI refresh. Only an explicit operator action sends lead content. Screens are animated with restrained CSS transitions and honor `prefers-reduced-motion`.
+
+Test:
+```powershell
+python -m pytest -q apps/api/tests
+cd apps/web
+npm install
+npm run test
+npm run build
+```
