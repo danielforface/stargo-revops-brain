@@ -1,6 +1,6 @@
 # Local operator acceptance — Windows 10/11
 
-This checklist is meant for the candidate to run on their own PC. It is not a substitute for live-test evidence.
+This is a repeatable Windows-based acceptance protocol. It describes checks a reviewer or operator can run, not assertions that a new reviewer has already completed them.
 
 1. Stop backend and Vite with Ctrl+C. From `D:\CODE\tasks\01\stargo-revops-brain`, run `git status --short`; if clean, run `git pull --ff-only` on `feat/revops-core`. Do not discard local work or delete the DB.
 2. Start Backend in PowerShell:
@@ -27,7 +27,7 @@ This checklist is meant for the candidate to run on their own PC. It is not a su
 9. In AI visibility, check 8 gaps and 24 recorded answers. Generate a brief without a key and then with one; in both, facts should use BC/PP source IDs. Verify that invoice reconciliation does not cite an unrelated air-waybill pilot.
 10. Test 390px viewport using browser DevTools; ensure buttons, key entry and metric panels remain accessible without horizontal page overflow (tables may scroll in their own containers). Run `python -m pytest -q apps/api/tests` and `npm run test && npm run build` on local machine if desired.
 11. Export `KPI_PACK.md` from **clean data** to submit using `python apps/api/export_kpi.py` or `Copy KPI pack` from Weekly Performance. The note to CRO must match current counts and mention the top gap. If your local DB contains trial decisions, do not represent it as the untouched source pack.
-12. Review and approve `PROCESS.md` in your own voice, record honest hours and LLM used, and inspect GitHub Actions statuses before sharing the repo. The task asks for submission within five calendar days of receipt; check any extension directly with Stargo.
+12. Consult `PROCESS.md` for the disclosed ChatGPT/Gemini roles and reported five hours of active work. Before treating any particular commit as validated, inspect the corresponding GitHub Actions run; use the submission instructions and dates from your original task pack.
 
 **Never send** your Gemini key, local private ZIP or employer documents in public GitHub issues, screenshots or source commits.
 

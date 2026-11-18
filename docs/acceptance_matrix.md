@@ -19,7 +19,7 @@
 | React+TS readable at 390px, refined UI | `App.tsx`, responsive `style.css`, `main.tsx` | Vitest App+operator tests, Vite build | Open DevTools at width 390px |
 | No outbound messaging, no CRM connection | API only returns reply drafts, no sending code | Code inspection, `SECURITY.md` | Confirm no real send action exists |
 | No-key setup and reproducible tests | `.env.example`, README, Actions CI | Linux/Windows and frontend CI | Follow README without a key |
-| AI coding workflow in first person | `PROCESS.md` | Source record provided as **draft** | Candidate must review and supply true hours |
+| AI-assisted development disclosure and candidate responsibilities | `PROCESS.md` | Explicitly identifies substantive ChatGPT-generated implementation, candidate-directed decisions and operator checks | Candidate can discuss actual contribution and trade-offs |
 
 ## Honest boundaries
 
@@ -30,7 +30,7 @@
 
 ## Readiness
 
-Passing CI alone is not human acceptance. The author must review `PROCESS.md`, record honest hours and Gemini use, walk through two KPI numbers, perform one historical Accept/Reject and one forced provider failure in their local environment, and withhold any post-submission pushes unless disclosed to Stargo.
+CI and local acceptance serve distinct purposes. The candidate reports approximately five hours of active work and discloses ChatGPT implementation assistance and live Gemini verification in `PROCESS.md`. Reviewers can independently walk through KPI source evidence, a historical Accept/Reject cycle and a simulated provider failure; no Git history has been rewritten to hide AI contributions.
 
 
 ## New evidence after operator walkthrough

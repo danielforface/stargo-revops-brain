@@ -1,10 +1,10 @@
 # Changelog
 
-## Unreleased
+## 2026-11-18 — Initial reviewer-ready implementation
 
-- Initial modular monolith with deterministic QL, audit decisions, traceable reporting, GEO snapshot, and local operator UI.
-- Offline test suite and opt-in Groq extraction adapter.
-- Repository governance, walkthrough and generated KPI pack.
+- Implement local modular monolith with deterministic QL gates, recorded decisions, traceable reporting, recorded GEO snapshots and a React operator UI.
+- Add offline tests, optional model adapters, contributor governance, reviewer walkthrough and the evidence-backed KPI pack.
+- Publish explicit AI-assisted engineering provenance and reproducible quality evidence.
 
 
 ## 2026-11-18 — Acceptance-time evidence hardening

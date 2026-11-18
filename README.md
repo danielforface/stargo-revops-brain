@@ -3,7 +3,20 @@
 **RevOps Engineer take-home · Stargo · November 2026**  
 An auditable, local-first GTM workbench: inbound signals → evidence extraction → deterministic qualification and routing → human Sales decisions → weekly KPI pack, with a source-grounded AI-visibility (GEO) workflow.
 
-**Start here:** [Windows setup](#windows--powershell-quick-start) · [macOS / Linux setup](#macos--linux-quick-start) · [How to review](docs/REVIEWER_GUIDE.md) · [KPI pack](KPI_PACK.md) · [AI-assisted process](PROCESS.md) · [Architecture](ARCHITECTURE.md).
+**Start here:** [Windows setup](#windows--powershell-quick-start) · [macOS / Linux setup](#macos--linux-quick-start) · [Reviewer guide](docs/REVIEWER_GUIDE.md) · [KPI pack](KPI_PACK.md) · [Engineering process & AI disclosure](PROCESS.md) · [Architecture](ARCHITECTURE.md).
+
+## Reviewer overview
+
+| What to assess | Where to start |
+| --- | --- |
+| Inbound → evidence → qualification → human Sales acceptance | [Reviewer guide](docs/REVIEWER_GUIDE.md) and the **Lead intelligence** view |
+| Reproducible weekly reporting and source drill-down | [KPI_PACK.md](KPI_PACK.md) and the **Weekly performance** view |
+| AI visibility, recorded GEO gaps, optional live Gemini | **AI visibility** view and [architecture](ARCHITECTURE.md) |
+| Engineering decisions, defect recovery, testing | [PROCESS.md](PROCESS.md) and [QUALITY_REPORT.md](QUALITY_REPORT.md) |
+
+**Development provenance:** The application was developed with extensive ChatGPT assistance, including substantial generated Python, React, tests and documentation. Candidate-led requirements, prioritization, local testing and defect-driven corrections are described in [PROCESS.md](PROCESS.md); Gemini is an optional *runtime* integration, not the implementation author. This repository preserves its normal commit history. The deliverable is a **single-operator localhost prototype**, not a deployed production service. The original employer-provided data is not publicly redistributed.
+
+**Suggested evaluation path (about five minutes after setup):** import the supplied ZIP; check `/api/health`; inspect one lead's source quotes, five gates and manual acceptance; verify the **6 / 4 / 3 / 2** reference KPI and a drill-down row; inspect the recorded GEO snapshot; then run `python scripts/reviewer_smoke.py` against an isolated temporary database. No Gemini key is necessary for these steps.
 
 > **Data availability:** The six original synthetic files from `Stargo_RevOps_Take_Home_Pack_v2.zip` are imported **locally**, rather than committed to this public repository. Reviewers already have the assignment ZIP; place it on the machine where the app will run. The application is functional without an LLM key, but the provided pack is necessary to reproduce the assignment's original KPI figures. CI uses independent synthetic fixtures; it does not need the employer pack.
 
@@ -150,7 +163,7 @@ Recorded AI answers -> deterministic GEO gap ranking -> approved-source brief
 | Resource | Purpose |
 |---|---|
 | [KPI_PACK.md](KPI_PACK.md) | Source-backed baseline export with <=150-word note to CRO |
-| [PROCESS.md](PROCESS.md) | Transparent AI-assisted workflow; candidate must review in their own first-person voice and honestly report hours |
+| [PROCESS.md](PROCESS.md) | Development provenance, candidate contribution, AI-generated implementation, validation, scope and reported working time |
 | [docs/REVIEWER_GUIDE.md](docs/REVIEWER_GUIDE.md) | Reviewer test script, inputs, expected behaviors and troubleshooting |
 | [docs/acceptance_matrix.md](docs/acceptance_matrix.md) | Original requirements mapped to evidence and tests |
 | [docs/engineering-walkthrough.md](docs/engineering-walkthrough.md) | Code tour and small-change exercise |
