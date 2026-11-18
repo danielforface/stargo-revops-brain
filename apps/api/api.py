@@ -5,12 +5,13 @@ import os
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from engine import Extraction, Inbound, Store, fallback_extract
 from geo import analyze_answers, build_brief
+from gemini import ALLOWED_MODELS, GeminiError, brief as gemini_brief, extract as gemini_extract, verify as gemini_verify
 
 BASE = Path(__file__).resolve().parents[2]
 DATA = os.environ.get("STARGO_DATA_DIR", str(BASE / "data" / "private"))
@@ -20,11 +21,22 @@ PROVIDER = os.environ.get("STARGO_LLM_PROVIDER", "rules-only").lower()
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 app = FastAPI(title="Stargo RevOps Brain", version="0.1.0")
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_credentials=False, allow_methods=["GET", "POST"], allow_headers=["Content-Type"])
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_credentials=False, allow_methods=["GET", "POST"], allow_headers=["Content-Type", "X-Gemini-API-Key"])
 store = Store(DB)
 seed_health = {"ready":False, "message":"Seed data not found; place the take-home pack data in data/private or set STARGO_DATA_DIR."}
 if all((Path(DATA) / file).exists() for file in ("crm_export.csv", "gtm_events.json", "ai_answers.json")):
     seed_health = {"ready":True, "counts":store.seed(DATA)}
+
+
+class GeminiRequest(BaseModel):
+    model: str = "gemini-2.5-flash"
+
+    @field_validator("model")
+    @classmethod
+    def approved_model(cls, value: str) -> str:
+        if value not in ALLOWED_MODELS:
+            raise ValueError("Select a supported Gemini model")
+        return value
 
 
 class DecisionRequest(BaseModel):
@@ -34,7 +46,9 @@ class DecisionRequest(BaseModel):
     note: str = Field(default="", max_length=1000)
 
 
-def extractor(inbound: dict, crm: dict | None):
+def extractor(inbound: dict, crm: dict | None, gemini_key: str | None = None, model: str = "gemini-2.5-flash"):
+    if gemini_key:
+        return gemini_extract(gemini_key, model, inbound, crm)
     if PROVIDER == "rules-only":
         return fallback_extract(inbound, crm)
     if PROVIDER != "groq":
@@ -80,20 +94,25 @@ def detail(inbound_id: str):
 
 
 @app.post("/api/inbound", status_code=201)
-def new_inbound(inbound: Inbound):
+def new_inbound(inbound: Inbound, x_gemini_api_key: str | None = Header(default=None, alias="X-Gemini-API-Key"), model: str = "gemini-2.5-flash"):
     require_ready()
+    if x_gemini_api_key and model not in ALLOWED_MODELS:
+        raise HTTPException(status_code=422, detail="Unsupported Gemini model")
     if not inbound.from_email and not inbound.linkedin_url:
         raise HTTPException(422, "Provide an email or LinkedIn URL for reliable identity matching")
     identifier = store.ingest(inbound)
-    store.analyze(identifier, extractor)
+    # Key exists only for this request/closure; it is never stored in SQLite.
+    store.analyze(identifier, lambda msg, crm: extractor(msg, crm, x_gemini_api_key, model))
     return store.lead(identifier)
 
 
 @app.post("/api/leads/{inbound_id}/analyze")
-def analyze(inbound_id: str):
+def analyze(inbound_id: str, x_gemini_api_key: str | None = Header(default=None, alias="X-Gemini-API-Key"), model: str = "gemini-2.5-flash"):
     require_ready()
+    if x_gemini_api_key and model not in ALLOWED_MODELS:
+        raise HTTPException(status_code=422, detail="Unsupported Gemini model")
     try:
-        store.analyze(inbound_id, extractor)
+        store.analyze(inbound_id, lambda msg, crm: extractor(msg, crm, x_gemini_api_key, model))
         return store.lead(inbound_id)
     except KeyError:
         raise HTTPException(404, "Lead not found") from None
@@ -141,6 +160,25 @@ def gaps():
 
 
 @app.post("/api/visibility/brief")
-def brief():
+def brief(body: GeminiRequest | None = None, x_gemini_api_key: str | None = Header(default=None, alias="X-Gemini-API-Key")):
     require_ready()
-    return build_brief(DATA)
+    if not x_gemini_api_key:
+        return build_brief(DATA)
+    try:
+        return gemini_brief(x_gemini_api_key, (body or GeminiRequest()).model, DATA)
+    except GeminiError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
+
+
+@app.get("/api/ai/providers")
+def ai_providers():
+    return {"default": "rules-only", "live_provider": "gemini", "models": list(ALLOWED_MODELS),
+            "privacy": "Keys are used per request only; not persisted or written to logs."}
+
+
+@app.post("/api/ai/verify")
+def ai_verify(body: GeminiRequest, x_gemini_api_key: str | None = Header(default=None, alias="X-Gemini-API-Key")):
+    try:
+        return gemini_verify(x_gemini_api_key, body.model)
+    except GeminiError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
