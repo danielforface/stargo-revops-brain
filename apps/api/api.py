@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from engine import Extraction, Inbound, Store, fallback_extract
 from geo import analyze_answers, build_brief
-from gemini import ALLOWED_MODELS, GeminiError, brief as gemini_brief, extract as gemini_extract, verify as gemini_verify
+from gemini import ALLOWED_MODELS, DEFAULT_MODEL, GeminiError, brief as gemini_brief, extract as gemini_extract, verify as gemini_verify
 
 BASE = Path(__file__).resolve().parents[2]
 DATA = os.environ.get("STARGO_DATA_DIR", str(BASE / "data" / "private"))
@@ -29,7 +29,7 @@ if all((Path(DATA) / file).exists() for file in ("crm_export.csv", "gtm_events.j
 
 
 class GeminiRequest(BaseModel):
-    model: str = "gemini-2.5-flash"
+    model: str = DEFAULT_MODEL
 
     @field_validator("model")
     @classmethod
@@ -46,7 +46,7 @@ class DecisionRequest(BaseModel):
     note: str = Field(default="", max_length=1000)
 
 
-def extractor(inbound: dict, crm: dict | None, gemini_key: str | None = None, model: str = "gemini-2.5-flash"):
+def extractor(inbound: dict, crm: dict | None, gemini_key: str | None = None, model: str = DEFAULT_MODEL):
     if gemini_key:
         return gemini_extract(gemini_key, model, inbound, crm)
     if PROVIDER == "rules-only":
@@ -94,7 +94,7 @@ def detail(inbound_id: str):
 
 
 @app.post("/api/inbound", status_code=201)
-def new_inbound(inbound: Inbound, x_gemini_api_key: str | None = Header(default=None, alias="X-Gemini-API-Key"), model: str = "gemini-2.5-flash"):
+def new_inbound(inbound: Inbound, x_gemini_api_key: str | None = Header(default=None, alias="X-Gemini-API-Key"), model: str = DEFAULT_MODEL):
     require_ready()
     if x_gemini_api_key and model not in ALLOWED_MODELS:
         raise HTTPException(status_code=422, detail="Unsupported Gemini model")
@@ -107,7 +107,7 @@ def new_inbound(inbound: Inbound, x_gemini_api_key: str | None = Header(default=
 
 
 @app.post("/api/leads/{inbound_id}/analyze")
-def analyze(inbound_id: str, x_gemini_api_key: str | None = Header(default=None, alias="X-Gemini-API-Key"), model: str = "gemini-2.5-flash"):
+def analyze(inbound_id: str, x_gemini_api_key: str | None = Header(default=None, alias="X-Gemini-API-Key"), model: str = DEFAULT_MODEL):
     require_ready()
     if x_gemini_api_key and model not in ALLOWED_MODELS:
         raise HTTPException(status_code=422, detail="Unsupported Gemini model")

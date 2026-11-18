@@ -17,7 +17,9 @@ from engine import Extraction
 from geo import COMPANY_CLAIMS, analyze_answers
 
 GEMINI_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
-ALLOWED_MODELS = ("gemini-2.5-flash", "gemini-2.5-flash-lite")
+# 2.5 remains available only to some existing projects; prefer current 3.x models.
+DEFAULT_MODEL = "gemini-3.5-flash-lite"
+ALLOWED_MODELS = ("gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-2.5-flash-lite", "gemini-2.5-flash")
 INTENT_TYPES = ["demo", "pricing", "pilot", "not interested", "unsubscribe", "auto-reply", "partnership", "investor", "job seeker", "other"]
 CLAIM_IDS = tuple(COMPANY_CLAIMS)
 
@@ -33,8 +35,21 @@ def checked_model(value: str) -> str:
 
 
 def checked_key(value: str | None) -> str:
-    if not value or not 16 <= len(value) <= 256 or not re.fullmatch(r"[A-Za-z0-9_-]+", value):
-        raise GeminiError("Enter a valid Gemini API key from Google AI Studio.")
+    """Accept both legacy AIza keys and current AQ. authorization keys.
+
+    Format checks are intentionally minimal: Google, not a brittle local regex,
+    decides if the credential is valid. New AI Studio keys contain a literal dot.
+    Reject partial/masked placeholders, whitespace and control characters before
+    passing a secret in the fixed HTTPS request header.
+    """
+    if (
+        not isinstance(value, str)
+        or not 16 <= len(value) <= 512
+        or not value.isascii()
+        or any(not (33 <= ord(char) <= 126) for char in value)
+        or "..." in value
+    ):
+        raise GeminiError("Enter a valid, complete Gemini API key. Use the copy icon in Google AI Studio; masked previews are not keys.")
     return value
 
 
@@ -42,7 +57,11 @@ def _generate(api_key: str, model: str, system: str, data: dict, schema: dict | 
     """Bounded single request: no redirects, retries, URL parameters or raw error forwarding."""
     model = checked_model(model)
     api_key = checked_key(api_key)
-    config: dict[str, Any] = {"temperature": 0.1, "maxOutputTokens": max_tokens, "thinkingConfig": {"thinkingBudget": 0}}
+    config: dict[str, Any] = {"temperature": 0.1, "maxOutputTokens": max_tokens}
+    # Gemini 3.x uses thinkingLevel, not the 2.5 thinkingBudget=0 contract.
+    # Let the newer model choose its default; do not send legacy configuration.
+    if model.startswith("gemini-2.5-"):
+        config["thinkingConfig"] = {"thinkingBudget": 0}
     if schema is not None:
         config.update({"responseMimeType": "application/json", "responseSchema": schema})
     payload = {
@@ -57,10 +76,14 @@ def _generate(api_key: str, model: str, system: str, data: dict, schema: dict | 
                 headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
                 json=payload,
             )
-        if response.status_code in (400, 404):
-            raise GeminiError("Gemini rejected the request or model. Check your model access in Google AI Studio.")
-        if response.status_code in (401, 403):
-            raise GeminiError("Gemini API key was rejected or lacks permission for this model.")
+        if response.status_code == 400:
+            raise GeminiError("Gemini rejected the request (HTTP 400). The selected model or request settings may not be compatible.")
+        if response.status_code == 404:
+            raise GeminiError("Gemini model unavailable to this project (HTTP 404). Try Gemini 3.5 Flash-Lite or Gemini 3.8 Flash.")
+        if response.status_code == 401:
+            raise GeminiError("Google rejected this API key (HTTP 401). Confirm that the full key was copied and is active in AI Studio.")
+        if response.status_code == 403:
+            raise GeminiError("Google denied this project's Gemini API access (HTTP 403). Check project, API restrictions and billing permissions.")
         if response.status_code == 429:
             raise GeminiError("Gemini rate limit or quota reached. Review your free-tier quota in AI Studio.")
         if response.status_code >= 500:
@@ -132,7 +155,7 @@ def extract(api_key: str, model: str, inbound: dict, crm: dict | None) -> Extrac
 
 
 def verify(api_key: str, model: str) -> dict:
-    answer = _generate(api_key, model, "Reply with a short acknowledgment. Do not echo secrets.", {"operation": "connection test"}, max_tokens=80)
+    answer = _generate(api_key, model, "Reply with a short acknowledgment. Do not echo secrets.", {"operation": "connection test"}, max_tokens=512)
     if not isinstance(answer, str) or not answer.strip():
         raise GeminiError("Gemini test returned no text.")
     return {"connected": True, "provider": "gemini", "model": checked_model(model), "mode": "live", "message": "Gemini connection verified"}

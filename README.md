@@ -132,3 +132,12 @@ npm install
 npm run test
 npm run build
 ```
+
+
+## Gemini API keys minted after 2026 (AQ. format)
+
+Google AI Studio now issues authorization keys beginning with `AQ.` as well as legacy `AIza` keys. A previous local validator rejected dots and incorrectly displayed “Enter a valid Gemini API key” *before contacting Google*. This has been fixed: both key formats pass safe, minimal syntax checks, and only Google decides whether a key is valid. Use the **copy icon** on the AI Studio API Keys page; the shortened key preview is not the secret.
+
+For new projects prefer **Gemini 3.5 Flash-Lite** (the UI default) or **Gemini 3.8 Flash**. Some newly created projects cannot call legacy 2.5 models. HTTP 401 indicates an authentication problem, HTTP 403 project access/permissions, HTTP 404 model unavailable, and HTTP 429 quota/rate limiting. A key's billing tier alone does not prove access to a selected model. The application does not auto-cycle through keys or models; choose the model explicitly and verify it.
+
+No secrets are checked into the repository or used in automated tests. Live connectivity remains a separate test to perform on the local operator machine. For security, don't paste a key into chat, issue comments, logs, or screenshots.

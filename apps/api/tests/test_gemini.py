@@ -170,3 +170,81 @@ def test_live_provider_failure_stays_needs_review_without_secret_leak(tmp_path, 
     assert analysis["qualification"]["reply_draft"] is None
     assert KEY not in response.text
     store.close()
+
+
+def test_new_authorization_key_accepts_dot_without_disclosing_secret(monkeypatch):
+    key = "AQ." + "A" * 50
+    assert gemini.checked_key(key) == key
+    seen = {}
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return {"candidates": [{"content": {"parts": [{"text": "Connected"}]}}]}
+    class FakeClient:
+        def __init__(self, **kwargs):
+            assert kwargs["follow_redirects"] is False
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            pass
+        def post(self, url, *, headers, json):
+            seen["url"] = url
+            seen["headers"] = headers
+            seen["payload"] = json
+            return FakeResponse()
+    monkeypatch.setattr(gemini.httpx, "Client", FakeClient)
+    result = gemini.verify(key, gemini.DEFAULT_MODEL)
+    assert result["connected"]
+    assert key not in json.dumps(result)
+    assert key not in seen["url"]
+    assert key not in json.dumps(seen["payload"])
+    assert seen["headers"]["x-goog-api-key"] == key
+    assert "thinkingBudget" not in json.dumps(seen["payload"])
+
+
+@pytest.mark.parametrize("unusable", [None, "", "...8c-A", "AQ." + "A" * 20 + " ", "AQ." + "A" * 20 + "\n", "••••••••••••••••••"])
+def test_partial_masked_or_malformed_key_rejected_without_network(unusable, monkeypatch):
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("Unusable key must be rejected before the network")
+    monkeypatch.setattr(gemini.httpx, "Client", refuse)
+    with pytest.raises(gemini.GeminiError, match="complete Gemini API key"):
+        gemini.verify(unusable, gemini.DEFAULT_MODEL)
+
+
+def test_current_and_legacy_models_expose_explicit_choices():
+    assert gemini.DEFAULT_MODEL == "gemini-3.5-flash-lite"
+    assert "gemini-3.8-flash" in gemini.ALLOWED_MODELS
+    assert "gemini-2.5-flash" in gemini.ALLOWED_MODELS
+
+
+def test_api_verify_new_authorization_key_uses_live_mock(monkeypatch):
+    new_key = "AQ." + "z" * 50
+    monkeypatch.setattr(gemini, "_generate", lambda key, model, *_args, **_kw: "OK")
+    client = TestClient(api.app)
+    res = client.post("/api/ai/verify", json={"model": gemini.DEFAULT_MODEL}, headers={"X-Gemini-API-Key": new_key})
+    assert res.status_code == 200
+    assert res.json()["connected"]
+    assert new_key not in res.text
+
+
+@pytest.mark.parametrize("status,phrase", [
+    (400, "HTTP 400"), (401, "HTTP 401"), (403, "HTTP 403"), (404, "HTTP 404"),
+])
+def test_connection_failures_identify_status_not_key(monkeypatch,status,phrase):
+    key = "AQ." + "K" * 50
+    class FakeResponse:
+        status_code = status
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            pass
+        def post(self, *_args, **_kwargs):
+            return FakeResponse()
+    monkeypatch.setattr(gemini.httpx, "Client", FakeClient)
+    with pytest.raises(gemini.GeminiError) as exc:
+        gemini.verify(key, gemini.DEFAULT_MODEL)
+    assert phrase in str(exc.value)
+    assert key not in str(exc.value)
