@@ -78,3 +78,10 @@ React keeps `Received at` optional with browser-local semantics converted to an 
 ## ADR-007 — GEO claim/topic controls
 
 Google selects editorial structure only. Factual paragraphs are concatenated from approved `COMPANY_CLAIMS`. Sections filter cited BC/PP IDs for topical relevance; numeric or absolute claims in generated headings are rejected before display. This guards the mismatch between invoice reconciliation and an unrelated AWB pilot. The offline 24-answer snapshot is not misrepresented as live search.
+
+
+## Firmographic evidence reconciliation after live-operator review
+
+Gemini's schema-validated `Extraction` is supplemented **inside Agent A** by a constrained deterministic pass over the original inbound. Company size, vertical, location and matching source quotes can only be added when the original text supports them. The resulting claims are still labelled unverified; they are not CRM data. Unsupported model-supplied numbers/industries are rejected, surfacing `needs review` rather than inflating Company Fit.
+
+Agent B's `assess` does not inspect raw-message text for QL: it consumes grounded excerpts, structured intent/problem, and CRM. Both Problem and Interest gates now demand their own relevant verbatim evidence, eliminating false QLs from a model that sets `intent=demo` with an unrelated quote. Unsubscribe/declines/auto-reply/injection indicators have deterministic precedence. Immutable decision snapshots are unaffected by a later extraction result. Confidence is deliberately bounded by tested language/locale patterns; unrecognized fact claims remain unknown.

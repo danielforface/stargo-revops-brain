@@ -31,3 +31,11 @@
 ## Readiness
 
 Passing CI alone is not human acceptance. The author must review `PROCESS.md`, record honest hours and Gemini use, walk through two KPI numbers, perform one historical Accept/Reject and one forced provider failure in their local environment, and withhold any post-submission pushes unless disclosed to Stargo.
+
+
+## New evidence after operator walkthrough
+
+- Agent A now corroborates model company facts against **the original message** with explicit self-reported provenance, never CRM enrichment guesses (`gemini.extract`, `fallback_extract`).
+- Agent B only passes Problem and Interest gates when each is grounded by a corresponding relevant quote in validated Agent A data (`assess`).
+- New `test_live_firmographics.py` covers missing ICP data, unsupported counts/verticals, invented buyer roles/interest/problems, unsubscribe, immutable accepted evidence, restart, Hebrew and Dutch.
+- Candidate should repeat live analysis using an authorized key and confirm current queue status separately from immutable historical KPI; no original source data or personal key is committed.

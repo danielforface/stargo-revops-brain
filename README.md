@@ -140,3 +140,12 @@ The client never stores the API key. Google may process the inbound message cont
 ## Remaining deliberate scope limits
 
 This is a local, single-operator review application. There is no real CRM or email integration, authentication, external deployment, distributed transaction queue or large-scale monitoring. The optional HubSpot dry-run bonus is not implemented: assignment scoring explicitly prioritizes correctness and evidential traceability. LLM live tests in CI use mock transport; they do not spend a real user's quota. For production, add multi-user authorization, migrations through a managed migration tool, server-managed secrets, access logs without personal data, secret rotation, and a formal eval corpus across languages and models.
+
+
+## Source-backed firmographics with Gemini (hybrid Agent A)
+
+When Gemini extracts buyer role/intent/pain but omits explicit company-size, industry or region statements, a second deterministic pass **inside Agent A** independently extracts supported statements from the **same inbound message**. Supported facts enter the validated Extraction, marked self-reported and unverified (never written to CRM). An invented employee count or unsupported vertical from the model causes a safe `needs review`, rather than a false QL. Agent B checks the validated Agent A output against the matched CRM record and additionally requires a **relevant grounded quote** for both the data problem and expressed buying interest; an arbitrary quote cannot substantiate `intent=demo`. Unsupported languages, phrasing and places remain unknown, not guessed.
+
+Basic patterns cover common English, Dutch, German and Hebrew examples; they do **not** guarantee complete multilingual understanding. Existing acceptance snapshots and historical KPIs remain immutable during re-analysis. The lead detail shows self-reported firmographics separately from CRM data.
+
+**Existing local DB:** stop both servers, `git pull --ff-only`, restart FastAPI and Vite, reconnect Gemini, then explicitly click **Re-analyze with Gemini** on the affected lead. Old analyses are not silently sent to Google again. No `runtime/` deletion or source ZIP re-import is needed. On a pristine private pack, `python scripts/reviewer_smoke.py` remains 6/4/3/2.

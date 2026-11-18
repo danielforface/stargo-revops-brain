@@ -30,3 +30,12 @@ This checklist is meant for the candidate to run on their own PC. It is not a su
 12. Review and approve `PROCESS.md` in your own voice, record honest hours and LLM used, and inspect GitHub Actions statuses before sharing the repo. The task asks for submission within five calendar days of receipt; check any extension directly with Stargo.
 
 **Never send** your Gemini key, local private ZIP or employer documents in public GitHub issues, screenshots or source commits.
+
+
+## Focused acceptance — re-analysis after firmographic repair
+
+1. Preserve `runtime/` and `data/private/`; update the development branch, restart API/UI, reconnect Gemini explicitly.
+2. Choose a previously `needs review` inbound where the **original** message clearly provides employee count, ICP vertical and location, and the Sales Acceptance has already been recorded. Click **Re-analyze with Gemini** once.
+3. Verify the lead detail now displays **Company facts · self-reported** (not CRM-verified), Company Fit and Relevant Buyer with evidence, and the correct geographic owner. The current status may become `QL` if all five gates are met; historical KPI remains unchanged.
+4. With **independently synthetic** inbound, verify no QL for a fabricated employee count, unsupported industry, fabricated interest with an irrelevant quote, unsubscribe, and invalid model output. Missing facts should remain unknown.
+5. Ensure the original clean-pack smoke still reports 6/4/3/2 without touching your actual operator SQLite. Live Google access is a separate manual check; CI uses mocked responses only.
