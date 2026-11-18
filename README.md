@@ -17,10 +17,8 @@ A **modular monolith**: one Python/FastAPI API, SQLite persistence, one React/Ty
 ## Quick start (no LLM key)
 
 ```bash
-# From the repo root; keep employer input out of Git.
-mkdir -p data/private
-# Unzip the employer-provided pack privately and copy its data/ files to data/private/.
-# Required: crm_export.csv, gtm_events.json, ai_answers.json.
+# From the repo root. Import the employer-provided ZIP privately (never committed):
+python scripts/import_take_home.py /path/to/Stargo_RevOps_Take_Home_Pack_v2.zip
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
 pip install -r apps/api/requirements.txt
@@ -40,6 +38,7 @@ Open `http://127.0.0.1:5173`. The backend serves `http://127.0.0.1:8000/api/heal
 Windows PowerShell, from the repository root:
 
 ```powershell
+py scripts/import_take_home.py "C:\path\to\Stargo_RevOps_Take_Home_Pack_v2.zip"
 py -m venv .venv
 .\\.venv\\Scripts\\Activate.ps1
 pip install -r apps/api/requirements.txt
