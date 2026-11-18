@@ -104,3 +104,7 @@ The checked-in `KPI_PACK.md` is generated from the original seed. It is not hand
 - **GEO**: uses source-grounded template instead of speculative live copy if no model is configured. All BC/PP claims are explicit; any novel claims require separate approval.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md), [PROCESS.md](PROCESS.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [docs/engineering-walkthrough.md](docs/engineering-walkthrough.md).
+
+## Windows browser returns `Internal Server Error` / KPI JSON parse error
+
+If the health endpoint is ready but `http://127.0.0.1:5173/api/kpi/week` shows HTTP 500, update to the latest `feat/revops-core` branch and restart **both** Python and Vite after `git pull --ff-only`. This issue was caused by concurrent `/api/leads` and `/api/kpi/week` requests sharing an unlocked SQLite connection. Store operations are now serialized using a reentrant lock and tested with concurrent requests. The UI also handles non-JSON server failures without crashing other tabs. Existing SQLite decisions are preserved; **do not delete `runtime/`**. The `favicon.ico` 404 and React DevTools suggestion in the browser console are not KPI errors.

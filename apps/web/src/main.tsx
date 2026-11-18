@@ -9,7 +9,15 @@ const keys: Record<string,string> = { company_fit:'Company fit', relevant_buyer:
 const names: Record<string,string> = {qualified_leads:'Qualified Leads',meetings_booked:'Meetings Booked',meetings_held:'Meetings Held',opportunities_created:'Opportunities'};
 const nowLocal = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0,16); };
 const israel = (s?:string) => s ? new Date(s).toLocaleString('en-GB',{timeZone:'Asia/Jerusalem',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
-const request = async (url:string, options?: RequestInit): Promise<any> => { const r = await fetch(url,{...options,headers:{'Content-Type':'application/json',...options?.headers}}); const result = await r.json(); if(!r.ok) throw new Error(typeof result.detail==='string'?result.detail:'Request failed'); return result; };
+const request = async (url:string, options?: RequestInit): Promise<any> => {
+  const r = await fetch(url,{...options,headers:{'Content-Type':'application/json',...options?.headers}});
+  const raw = await r.text();
+  let result: any;
+  try { result = raw ? JSON.parse(raw) : null; }
+  catch { throw new Error(`API returned a non-JSON response (${r.status}) for ${url}. Check the backend terminal.`); }
+  if(!r.ok) throw new Error(typeof result?.detail==='string'?result.detail:`API request failed (${r.status}) for ${url}. Check the backend terminal.`);
+  return result;
+};
 const initials=(s:string) => s.trim().split(/\s+/).map(x=>x[0]).slice(0,2).join('').toUpperCase();
 const statusStyle=(s:string)=>'status '+s.toLowerCase().replaceAll(' ','-');
 function App() {
@@ -29,7 +37,14 @@ function App() {
   const [actor,setActor] = useState('Reviewer');
   const [brief,setBrief] = useState<Obj|null>(null);
   const [expandedMetric,setExpandedMetric] = useState<string|null>(null);
-  const refresh=async()=>{ try{ setError(''); const [l,k,v]=await Promise.all([request('/api/leads'),request('/api/kpi/week'),request('/api/visibility')]);setLeads(l);setKpi(k);setVisibility(v); }catch(ex){setError(String(ex));} };
+  const refresh=async()=>{
+    const [l,k,v]=await Promise.allSettled([request('/api/leads'),request('/api/kpi/week'),request('/api/visibility')]);
+    if(l.status==='fulfilled') setLeads(l.value);
+    if(k.status==='fulfilled') setKpi(k.value);
+    if(v.status==='fulfilled') setVisibility(v.value);
+    const failures=[l,k,v].filter((entry):entry is PromiseRejectedResult=>entry.status==='rejected');
+    setError(failures.map(entry=>String(entry.reason)).join(' · '));
+  };
   useEffect(()=>{void refresh();},[]);
   useEffect(()=>{if(selected) void request('/api/leads/'+encodeURIComponent(selected)).then(setDetail).catch(e=>setError(String(e)));else setDetail(null);},[selected]);
   const visible=useMemo(()=>leads.filter(l=> (filter==='all'||l.analysis.qualification.status===filter)&&`${l.inbound.from_name} ${l.contact.company_name} ${l.inbound.channel}`.toLowerCase().includes(search.toLowerCase())),[filter,leads,search]);

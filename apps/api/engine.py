@@ -8,6 +8,8 @@ import re
 import sqlite3
 import uuid
 from collections import defaultdict
+from functools import wraps
+from threading import RLock
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -206,6 +208,10 @@ def fallback_extract(inbound: dict, crm: dict | None) -> Extraction:
             message, re.I)
         if role_match:
             role = role_match.group(0)
+        elif re.search(r"\bI own\b", message, re.I):
+            # A self-declared owner can be a buyer at a business under 200 people.
+            # Ownership is a claim; employment and vertical remain separate QL checks.
+            role = "Owner (self-reported)"
         elif re.search(r"(?:מנהלת?|ראש) (?:מחלקת )?(?:תפעול|רכש|כספים|תמחור)", message):
             role = "Operations Manager (self-reported, Hebrew)"
     return Extraction(language=language, intent=intent, stated_buyer_role=role,
@@ -301,10 +307,25 @@ def assess(inbound: dict, crm: dict | None, extraction: Extraction, decisions: l
     return Qualification(score=score, factors=factors, conditions=conditions, status=status, owner=owner, rationale=f"{extraction.intent}; {sum(bool(x['met']) for x in conditions.values())}/5 QL gates evidenced; owner={owner or 'none'}", reply_draft=draft)
 
 
+def synchronized(method):
+    """Protect the shared SQLite connection across FastAPI worker threads.
+
+    Reentrant because KPI -> lead -> analyze -> items may nest. The entire
+    logical operation is serialized, including lazy materialization of analysis
+    rows; otherwise concurrent readers and writers can corrupt DB cursor state.
+    """
+    @wraps(method)
+    def guarded(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return guarded
+
+
 class Store:
     """One SQLite source of truth; seed rows upsert, human actions append-only."""
 
     def __init__(self, path: str):
+        self._lock = RLock()
         self.path = path
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, check_same_thread=False)
@@ -324,9 +345,11 @@ class Store:
         """)
         self.db.commit()
 
+    @synchronized
     def close(self):
         self.db.close()
 
+    @synchronized
     def put(self, table: str, record_id: str, payload: dict, contact_id: str | None = None) -> None:
         if table == "contacts":
             self.db.execute("INSERT OR IGNORE INTO contacts VALUES (?,?)", (record_id, json.dumps(payload)))
@@ -337,12 +360,14 @@ class Store:
         else:
             raise ValueError("invalid table")
 
+    @synchronized
     def items(self, table: str) -> list[dict]:
         if table not in {"contacts", "inbound", "decisions", "pipeline"}:
             raise ValueError("invalid table")
         rows = self.db.execute(f"SELECT * FROM {table}").fetchall()
         return [dict(json.loads(row["payload"]), **({"_contact_id": row["contact_id"]} if "contact_id" in row.keys() else {})) for row in rows]
 
+    @synchronized
     def contact_for(self, email: str | None, linkedin: str | None) -> tuple[str, dict | None]:
         e, li = email_norm(email), linkedin_norm(linkedin)
         for c in self.items("contacts"):
@@ -352,6 +377,7 @@ class Store:
         cid = "EXT-" + uuid.uuid5(uuid.NAMESPACE_URL, e or li or str(uuid.uuid4())).hex[:16]
         return cid, None
 
+    @synchronized
     def seed(self, source_dir: str) -> dict:
         path = Path(source_dir)
         with (path / "crm_export.csv").open(newline="", encoding="utf-8-sig") as fh:
@@ -379,6 +405,7 @@ class Store:
         self.db.commit()
         return {"contacts": len(self.items("contacts")), "inbound": len(self.items("inbound")), "decisions": len(self.items("decisions")), "pipeline": len(self.items("pipeline")), "rejected": self.db.execute("SELECT count(*) FROM rejected_seed").fetchone()[0]}
 
+    @synchronized
     def ingest(self, inbound: Inbound) -> str:
         cid, c = self.contact_for(inbound.from_email, inbound.linkedin_url)
         if not c:
@@ -388,6 +415,7 @@ class Store:
         self.db.commit()
         return inbound.id
 
+    @synchronized
     def analyze(self, inbound_id: str, extractor=None) -> dict:
         row = self.db.execute("SELECT * FROM inbound WHERE id=?", (inbound_id,)).fetchone()
         if not row:
@@ -415,6 +443,7 @@ class Store:
         self.db.commit()
         return result
 
+    @synchronized
     def lead(self, inbound_id: str) -> dict:
         row = self.db.execute("SELECT * FROM inbound WHERE id=?", (inbound_id,)).fetchone()
         if not row:
@@ -437,6 +466,7 @@ class Store:
             outcome["status"], outcome["owner"], outcome["reply_draft"] = "suppressed", None, None
         return {"inbound": inbound, "contact_id": cid, "contact": crm, "analysis": {"extraction": json.loads(analysis["extraction"]) if analysis["extraction"] else None, "qualification": outcome, "error": analysis["error"], "mode": analysis["mode"]}, "decisions": sorted(decisions, key=lambda x: x["decided_at"])}
 
+    @synchronized
     def leads(self) -> list[dict]:
         # The queue represents people, not messages; duplicate-channel touches are visible in detail.
         grouped: dict[str, list[dict]] = defaultdict(list)
@@ -453,6 +483,7 @@ class Store:
             result.append(chosen)
         return sorted(result, key=lambda x: (x["analysis"]["qualification"]["status"] != "needs review", -x["analysis"]["qualification"]["score"], stamp(x["inbound"]["received_at"])))
 
+    @synchronized
     def decide(self, inbound_id: str, decision: Literal["accepted", "rejected"], decided_at: str, actor: str, note: str = "") -> dict:
         lead = self.lead(inbound_id)
         cid = lead["contact_id"]
@@ -464,6 +495,7 @@ class Store:
         self.db.commit()
         return self.lead(inbound_id)
 
+    @synchronized
     def kpi(self) -> dict:
         inbound = self.items("inbound")
         decisions = self.items("decisions")
