@@ -33,3 +33,18 @@ jobs:
       - name: Typecheck and production build
         working-directory: apps/web
         run: npm run build
+  windows-backend:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Install backend dependencies, including Windows IANA timezone database
+        run: python -m pip install -r apps/api/requirements-dev.txt
+      - name: Validate Jerusalem time zone and backend tests on Windows
+        run: python -m pytest -q apps/api/tests
+      - name: Compile and lint on Windows
+        run: |
+          python -m compileall -q apps/api
+          python -m ruff check apps/api --select E4,E7,E9,F63,F7,F82

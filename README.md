@@ -35,17 +35,22 @@ npm run dev
 
 Open `http://127.0.0.1:5173`. The backend serves `http://127.0.0.1:8000/api/health` and OpenAPI documentation at `http://127.0.0.1:8000/docs`.
 
-Windows PowerShell, from the repository root:
+Windows PowerShell, from the repository root (the path may be anywhere, not necessarily your Desktop):
 
 ```powershell
-py scripts/import_take_home.py "C:\path\to\Stargo_RevOps_Take_Home_Pack_v2.zip"
+py scripts/import_take_home.py "$env:USERPROFILE\Downloads\Stargo_RevOps_Take_Home_Pack_v2.zip"
 py -m venv .venv
-.\\.venv\\Scripts\\Activate.ps1
-pip install -r apps/api/requirements.txt
-$env:STARGO_DATA_DIR = (Resolve-Path data/private).Path
-$env:STARGO_DB_PATH = 'runtime/revops.sqlite3'
-uvicorn api:app --app-dir apps/api --reload
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r apps/api/requirements.txt
+$env:STARGO_DATA_DIR = (Resolve-Path ".\data\private").Path
+$env:STARGO_DB_PATH = "runtime/revops.sqlite3"
+$env:STARGO_LLM_PROVIDER = "rules-only"
+python -m uvicorn api:app --app-dir apps/api --reload --host 127.0.0.1 --port 8000
 ```
+
+**Windows time-zone support:** The backend uses `ZoneInfo("Asia/Jerusalem")` for the reporting window. Windows/Python may not provide the IANA time-zone database. `requirements.txt` now installs the official Python `tzdata` package automatically on Windows. If you installed requirements before this fix, while the project's `.venv` is activated run `python -m pip install tzdata`, stop the old Uvicorn process with Ctrl+C, and restart it. A line saying “Uvicorn running” is not proof that the worker initialized: verify `http://127.0.0.1:8000/api/health` returns `{"ok":true,...}` and `seed.ready` is true.
+
+If PowerShell blocks `Activate.ps1`, run `Set-ExecutionPolicy -Scope Process Bypass` once in the current window and try again. When `$HOME\Desktop` is missing (e.g., OneDrive-redirected Desktop), work in any existing directory; all commands are relative to the repo root.
 
 Once seeded, the SQLite database can be restarted safely; the importer uses stable source IDs and does **not** overwrite human decisions. The original malformed `IN-019` record is quarantined with an error class; it does not crash setup. The 19 CRM records, 20 valid inbound records, 11 sales decisions and 12 pipeline events are stored at clean import.
 
