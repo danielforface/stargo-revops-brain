@@ -155,7 +155,7 @@ class Qualification(BaseModel):
     reply_draft: str | None = None
 
 
-PROBLEM_RE = re.compile(r"(quote|quoting|rfq|tariff|rate request|rate card|invoice|reconcil|contract|bill.s? of lading|awb|air waybill|customs|document|import declaration|booking|re.key|תמחור|הצעות מחיר|מתמחר|מסמכ|חשבוניות|מכס)", re.I)
+PROBLEM_RE = re.compile(r"(quote|quoting|rfq|tariff|rate request|rate card|invoice|reconcil|contract|bill.s? of lading|awb|air waybill|customs|document|import declaration|booking|re.key|תמחור|הצעות מחיר|מתמחר|מסמכ|חשבוניות|מכס|facturen?|fakturen?|rechnungen?|zoll)", re.I)
 INTEREST_RE = re.compile(r"(demo|pilot|pricing|price|cost|send me times|can we talk|would like to see|can we see|can you show|30.minute call|happy to chat|open to a .*call|want to see|אשמח לשיחה|מחיר|אפשר לראות|פגישה|שיחה השבוע)", re.I)
 INJECTION_RE = re.compile(r"((?:ignore|disregard|forget) (?:all |previous |your |the )*(?:rules|instructions|policy)|system (?:note|prompt|message)|developer message|override (?:the |your )?(?:policy|rules)|mark (?:this|me) (?:lead )?as qualified|reveal (?:your|the) (?:system|hidden) prompt|אתה עכשיו|התעלם מההוראות)", re.I)
 
@@ -184,17 +184,37 @@ def fallback_extract(inbound: dict, crm: dict | None) -> Extraction:
         intent = "demo"
     language = "he" if re.search("[\u0590-\u05ff]", message) else "nl" if "geen interesse" in low else "en"
     company_facts: list[str] = []
-    employees = re.search(r"\b(\d{1,6})\s*[- ]?(?:people|persons?|employees?|staff)\b", message, re.I)
+    employees = re.search(
+        r"\b(\d{1,6})\s*[- ]?(?:people|persons?|employees?|staff|"
+        r"medewerkers|werknemers|mitarbeiter(?:innen)?|employés?|"
+        r"עובדים|עובדות)\b", message, re.I)
     if employees:
         company_facts.append("employees=" + employees.group(1) + " (self-reported)")
-    vertical = re.search(r"customs brokerage|freight forwarder|3pl|trucking|trade.finance|carrier", message, re.I)
+    vertical = re.search(
+        r"customs brokerage|customs broker|freight forwarder|freight forwarding|"
+        r"3pl|trucking|trade.finance|carrier|air cargo|ground handling|"
+        r"עמילות מכס|סוכן מכס|שילוח בינלאומי|משלח בינלאומי|"
+        r"Spedition|Spediteur|expediteur", message, re.I)
     if vertical:
         company_facts.append("vertical=" + vertical.group(0) + " (self-reported)")
-    location = re.search(r"\b(?:in|from)\s+(Haifa|Israel|London|Singapore|Rotterdam|Berlin)\b", message, re.I)
+    location = re.search(
+        r"\b(?:in|from|based in|located in)\s+"
+        r"(Haifa|Israel|London|Singapore|Rotterdam|Berlin|Amsterdam|"
+        r"Netherlands|Germany|UK|United Kingdom|United States|USA|"
+        r"Sweden|Norway|Denmark|Finland|Belgium|Austria|Switzerland)\b|"
+        r"ב(חיפה|ישראל|תל אביב|אשדוד|ירושלים)\b", message, re.I)
     if location:
-        company_facts.append("location=" + location.group(1) + " (self-reported)")
+        company_facts.append("location=" + (location.group(1) or location.group(2)) + " (self-reported)")
     sentence_parts = re.split(r"(?<=[.!?])\s+", message)
-    evidence = [part[:260] for part in sentence_parts if PROBLEM_RE.search(part) or INTEREST_RE.search(part)][:5]
+    # Preserve the exact source sentence behind self-reported firmographics.
+    # Gemini sometimes quotes intent/pain but omits company facts.
+    evidence = [
+        part[:260] for part in sentence_parts
+        if PROBLEM_RE.search(part) or INTEREST_RE.search(part)
+        or (employees and employees.group(0) in part)
+        or (vertical and vertical.group(0) in part)
+        or (location and location.group(0) in part)
+    ][:8]
     if not evidence and message:
         evidence = [message[:220]]
     # Unseen inbound messages may declare a buyer role even without a CRM record.
@@ -211,6 +231,8 @@ def fallback_extract(inbound: dict, crm: dict | None) -> Extraction:
             role = role_match.group(0)
         elif re.search(r"\bI own\b", message, re.I):
             role = "Owner (self-reported)"
+        elif re.search(r"\bאני (?:בעל|בעלת)\b|\bIk ben eigenaar\b", message, re.I):
+            role = "Owner (self-reported)"
         elif re.search(r"(?:מנהלת?|ראש) (?:מחלקת )?(?:תפעול|רכש|כספים|תמחור)", message):
             role = "Operations Manager (self-reported, Hebrew)"
     return Extraction(language=language, intent=intent, stated_buyer_role=role,
@@ -221,7 +243,16 @@ def fallback_extract(inbound: dict, crm: dict | None) -> Extraction:
 
 def vertical_norm(raw: str | None) -> str:
     v = (raw or "").strip().lower().replace("_", "-").replace(" ", "-")
-    return {"freight-forwarder": "freight-forwarder", "freight-forwarding": "freight-forwarder", "air-cargo": "air-cargo", "customs-brokerage": "customs-broker", "customs-broker": "customs-broker", "trade-finance": "trade-finance", "3pl": "3pl"}.get(v, v)
+    return {
+        "freight-forwarder": "freight-forwarder", "freight-forwarding": "freight-forwarder",
+        "spedition": "freight-forwarder", "spediteur": "freight-forwarder",
+        "expediteur": "freight-forwarder", "שילוח-בינלאומי": "freight-forwarder",
+        "משלח-בינלאומי": "freight-forwarder",
+        "air-cargo": "air-cargo", "ground-handling": "ground-handling",
+        "customs-brokerage": "customs-broker", "customs-broker": "customs-broker",
+        "עמילות-מכס": "customs-broker", "סוכן-מכס": "customs-broker",
+        "trade-finance": "trade-finance", "3pl": "3pl",
+    }.get(v, v)
 
 
 def buyer_role(title: str | None, employee_count: int | None) -> bool:
@@ -257,13 +288,22 @@ def assess(inbound: dict, crm: dict | None, extraction: Extraction, decisions: l
     region = REGION_MAP.get(str(c.get("country", "")).upper())
     # Fallback geography for self-reported statements only; not based on email locality.
     if not region:
-        region = {"haifa":"Israel", "london":"UK", "berlin":"DACH", "rotterdam":"Benelux"}.get(str(c.get("country", "")).lower())
+        region = {
+            "haifa":"Israel", "חיפה":"Israel", "ישראל":"Israel",
+            "תל אביב":"Israel", "אשדוד":"Israel", "ירושלים":"Israel",
+            "london":"UK", "berlin":"DACH", "rotterdam":"Benelux",
+            "amsterdam":"Benelux",
+        }.get(str(c.get("country", "")).lower())
     fit = vertical in VERTICALS and employees is not None and employees >= 20 and region is not None
     buyer = buyer_role(extraction.stated_buyer_role or c.get("job_title"), employees)
-    problem = bool(extraction.stated_data_problem)
-    # Agent B consumes validated Agent A signals, never the raw message body.
-    # A quote must be grounded by Store.analyze before it reaches this function.
-    interest = extraction.intent in {"demo", "pricing", "pilot"} and bool(extraction.evidence_quotes)
+    # Specific grounded source excerpts are required for both pain and interest.
+    # Agent B reads validated Agent A output, not raw inbound instructions.
+    problem = bool(extraction.stated_data_problem) and any(
+        PROBLEM_RE.search(quote) for quote in extraction.evidence_quotes
+    )
+    interest = extraction.intent in {"demo", "pricing", "pilot"} and any(
+        INTEREST_RE.search(quote) for quote in extraction.evidence_quotes
+    )
     accepted = any(d["decision"] == "accepted" for d in decisions)
     conditions = {
         "company_fit": {"met": fit, "known": bool(vertical and employees is not None and region), "evidence": f"vertical={vertical or 'unknown'}; employees={employees if employees is not None else 'unknown'}; region={region or 'unknown'}", "unverified": bool(c.get("_employees_unverified") or c.get("_vertical_unverified") or c.get("_region_unverified"))},
