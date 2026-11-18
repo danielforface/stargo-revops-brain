@@ -85,3 +85,36 @@ def test_direct_answer_must_use_topic_appropriate_source_ids(tmp_path,monkeypatc
     })
     with pytest.raises(gemini.GeminiError,match='only claims unrelated'):
         gemini.brief(KEY,MODEL,str(tmp_path))
+
+
+def test_mixed_invoice_and_unverified_trade_compliance_heading_is_rewritten(tmp_path, monkeypatch):
+    result = make_brief(tmp_path, monkeypatch, sections=[
+        {'heading':'Invoice Reconciliation and Trade Compliance', 'claim_ids':['BC-3c']},
+        {'heading':'Document Extraction', 'claim_ids':['BC-3b']},
+        {'heading':'Rate Quoting Workflow', 'claim_ids':['BC-3a']},
+    ])
+    assert result['sections'][0]['heading'] == 'Invoice and Contract Reconciliation'
+    assert result['sections'][0]['citations'] == ['BC-3c']
+    assert not any('compliance' in s['heading'].lower() for s in result['sections'])
+    assert any('unsupported section-heading' in n for n in result['quality_notes'])
+
+
+def test_general_logistics_scope_does_not_attach_unrelated_airwaybill_pilot(tmp_path, monkeypatch):
+    result = make_brief(tmp_path, monkeypatch, sections=[
+        {'heading':'Operational Scope Across Logistics Segments', 'claim_ids':['BC-1','BC-2','PP-3']},
+        {'heading':'Document Extraction', 'claim_ids':['BC-3b']},
+        {'heading':'Rate Quoting Workflow', 'claim_ids':['BC-3a']},
+    ])
+    assert result['sections'][0]['citations'] == ['BC-1','BC-2']
+    assert 'PP-3' not in result['sections'][0]['body']
+    assert any('PP-3' in n for n in result['quality_notes'])
+
+
+def test_multi_topic_heading_cannot_imply_both_invoice_and_airwaybill_if_only_invoice_evidence(tmp_path, monkeypatch):
+    result = make_brief(tmp_path, monkeypatch, sections=[
+        {'heading':'Invoice Reconciliation and Air Waybill Digitization', 'claim_ids':['BC-3c']},
+        {'heading':'Document Extraction', 'claim_ids':['BC-3b']},
+        {'heading':'Rate Quoting Workflow', 'claim_ids':['BC-3a']},
+    ])
+    assert result['sections'][0]['heading'] == 'Invoice and Contract Reconciliation'
+    assert result['sections'][0]['citations'] == ['BC-3c']

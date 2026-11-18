@@ -227,11 +227,12 @@ def topic_of(text: str) -> set[str]:
         "reconciliation": r"reconcil|matching contracts",
         "quote": r"quot|rfq|pricing analyst|spot price",
         "rate": r"tariff|freight rate|carrier rate|spot rate",
-        "finance": r"trade.finance|letter of credit|financ|document checking",
+        "finance": r"trade.finance|trade compliance|letter of credit|financ|document checking",
         "bol": r"bill[s]? of lading|\bbol\b",
         "awb": r"air.?waybill|air cargo|\bawb\b",
         "document": r"document|data extract|data process|digitiz|re.key",
-        "audience": r"who (?:can|should|uses)|which (?:teams|sectors)|industries|supported teams",
+        "audience": r"who (?:can|should|uses)|which (?:teams|sectors)|industries|supported teams|operational scope|logistics segments|sector coverage|industry scope",
+
     }
     for name, regex in patterns.items():
         if re.search(regex, low):
@@ -263,6 +264,51 @@ def filter_topic_claims(claim_ids: list[str], heading: str, warnings: list[str],
     if not ids:
         raise GeminiError("Gemini cited only claims unrelated to this section; revise and retry.")
     return _selected_claims(ids, limit)
+
+
+# A generated title is an editorial claim too. Matching a single keyword from
+# an otherwise mixed heading is insufficient to support the full heading.
+# When the model combines supported and unsupported workflows, preserve the
+# approved body/citations and replace only the heading with a safe canonical
+# label; disclose that editorial correction to the reviewer.
+CANONICAL_HEADINGS = {
+    "BC-3c": "Invoice and Contract Reconciliation",
+    "BC-3d": "Trade Document Checking",
+    "BC-3b": "Document Extraction and Validation",
+    "BC-3a": "Rate Quoting Workflow",
+    "PP-2": "Document Extraction Pilot Evidence",
+    "PP-3": "Air Waybill Data Processing",
+    "PP-1": "Rate Quoting Pilot Evidence",
+    "BC-2": "Supported Logistics Teams",
+    "BC-1": "Agentic AI for Logistics Operations",
+}
+
+
+def grounded_heading(heading: str, approved_ids: list[str], notes: list[str]) -> str:
+    """Ensure all headline topics have actual approved evidence.
+
+    The approved prose remains verbatim; only unsupported editorial language
+    is replaced. A compliance promise is never implied by a document-checking
+    claim, even when its topic keywords overlap.
+    """
+    heading_topics = topic_of(heading) - {"general"}
+    supported_topics: set[str] = set()
+    for claim_id in approved_ids:
+        supported_topics.update(CLAIM_TOPICS.get(claim_id, set()))
+    unsupported = heading_topics - supported_topics
+    implies_compliance = bool(re.search(
+        r"\\b(?:trade|regulatory|customs|legal)\\s+complian(?:ce|t)\\b",
+        heading, re.I
+    ))
+    implies_enterprise_integration = bool(re.search(
+        r"\\benterprise\\s+integration\\b", heading, re.I
+    )) and "BC-3b" not in approved_ids
+    if not unsupported and not implies_compliance and not implies_enterprise_integration:
+        return heading
+    canonical = next((CANONICAL_HEADINGS[i] for i in CANONICAL_HEADINGS if i in approved_ids),
+                     "Approved Logistics Workflows")
+    notes.append("Replaced unsupported section-heading claim with a source-grounded workflow heading.")
+    return canonical
 
 
 def brief(api_key: str, model: str, source_dir: str) -> dict:
@@ -319,6 +365,7 @@ def brief(api_key: str, model: str, source_dir: str) -> dict:
             raise GeminiError("Gemini supplied an invalid section heading.")
         validate_editorial(heading)
         ids, copy = filter_topic_claims(section.get("claim_ids"), heading, quality_notes)
+        heading = grounded_heading(heading, ids, quality_notes)
         sections.append({"heading": heading, "body": copy, "citations": ids})
     faq = []
     for item in response["faq"]:
